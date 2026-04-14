@@ -1,0 +1,1 @@
+# puzzlebot-pallet-loader
