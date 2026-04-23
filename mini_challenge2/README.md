@@ -1,3 +1,4 @@
+
 # Puzzlebot Pallet Loader - Mini Challenge 2
 
 Este repositorio contiene la solución al **Mini Challenge 2**, el cual consiste en la simulación de la cinemática de un robot móvil de tracción diferencial (Puzzlebot) utilizando **ROS 2** y **RViz2**.
@@ -15,7 +16,7 @@ Para lograr esto, se implementó un nodo personalizado en Python (`circular_move
 ## Resultado de la Simulación
 
 <div align="center">
-  <img src="https://github.com/user-attachments/assets/ec269a60-04f6-4fa6-86f6-0ecc745713bf" width="50%" alt="Puzzlebot Simulation">
+  <img src="https://github.com/user-attachments/assets/9f426788-c441-4b04-89bf-9296b4d261c1" width="50%" alt="Puzzlebot Simulation">
 </div>
 
 ## ¿Cómo ejecutar la simulación?
