@@ -2,7 +2,7 @@ from setuptools import find_packages, setup
 import os
 from glob import glob
 
-package_name = 'puzzlebot_sim'
+package_name = 'mini_challenge3'
 
 setup(
     name=package_name,
@@ -20,17 +20,17 @@ setup(
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='Mario Martinez',
-    maintainer_email='mario.mtz@manchester-robotics.com',
-    description='Puzzlebot Kinematic Sim',
+    maintainer='Harum Kim',
+    maintainer_email='harumkim09@gmail.com',
+    description='Challenge 3 - Puzzlebot Kinematic Sim',
     license='Apache-2.0',
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'joint_state_pub = puzzlebot_sim.joint_state_pub:main',
-            'puzzlebot_sim = puzzlebot_sim.puzzlebot_sim:main',
-            'localisation = puzzlebot_sim.localisation:main',
-            'point_stabilisation_control = puzzlebot_sim.point_stabilisation_control:main'
+            'joint_state_pub = mini_challenge3.joint_state_pub:main',
+            'puzzlebot_sim = mini_challenge3.puzzlebot_sim:main',
+            'localisation = mini_challenge3.localisation:main',
+            'point_stabilisation_control = mini_challenge3.point_stabilisation_control:main'
         ],
     },
 )

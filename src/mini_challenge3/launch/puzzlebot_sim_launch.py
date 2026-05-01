@@ -17,7 +17,7 @@ def generate_launch_description():
  
     urdf_file_name = 'puzzlebot.urdf'
     urdf_default_path = os.path.join(
-                        get_package_share_directory('puzzlebot_sim'),
+                        get_package_share_directory('mini_challenge3'),
                         'urdf',
                         urdf_file_name)
    
@@ -34,7 +34,7 @@ def generate_launch_description():
 
     # Nodo del simulador cinemático
     puzzlebot_sim_node = Node(
-        package='puzzlebot_sim',
+        package='mini_challenge3',
         executable='puzzlebot_sim',
         name='puzzlebot_sim',
         output='screen'
@@ -42,7 +42,7 @@ def generate_launch_description():
 
     # Nodo de localización por dead reckoning
     localisation_node = Node(
-        package='puzzlebot_sim',
+        package='mini_challenge3',
         executable='localisation',
         name='localisation',
         output='screen'
@@ -50,7 +50,7 @@ def generate_launch_description():
 
     # Nodo que publica joint_states y TF odom -> base_footprint
     joint_state_pub_node = Node(
-        package='puzzlebot_sim',
+        package='mini_challenge3',
         executable='joint_state_pub',
         name='joint_state_pub',
         output='screen'
@@ -58,7 +58,7 @@ def generate_launch_description():
 
     # Nodo de control de posición
     point_stabilisation_node = Node(
-        package='puzzlebot_sim',
+        package='mini_challenge3',
         executable='point_stabilisation_control',
         name='point_stabilisation_control',
         output='screen'
