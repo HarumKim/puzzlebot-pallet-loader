@@ -6,5 +6,5 @@ if __name__ == "__main__":
     num2 = 15
     total = calculate_sum(num1, num2)
     
-    print("🚀 GitHub Actions workflow is running the Python script!")
+    print("GitHub Actions workflow is running the Python script!")
     print(f"The sum of {num1} and {num2} is: {total}")
