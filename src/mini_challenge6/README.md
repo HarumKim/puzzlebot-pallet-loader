@@ -32,10 +32,7 @@ Ambos nodos leen el waypoint objetivo y la tolerancia de llegada desde un archiv
 
 ## Resultado de la Simulación
 
-<!-- Inserta aquí la imagen o GIF del resultado (e.g., captura de Gazebo mostrando el robot llegando al goal marker) -->
-<div align="center">
-  <img src="" width="50%" alt="Puzzlebot Mini Challenge 6 Simulation">
-</div>
+<img width="1252" height="871" alt="minichallenge6" src="https://github.com/user-attachments/assets/96fc90df-4ca7-40a9-acab-c1588775be36" />
 
 ## ¿Cómo ejecutar la simulación?
 
