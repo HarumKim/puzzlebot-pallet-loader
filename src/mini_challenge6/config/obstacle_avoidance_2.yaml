@@ -1,3 +1,8 @@
 /**:
   ros__parameters:
+    # World: obstacle_avoidance_2.world
+    # Model: goal_marker_3
+    # Full pose (x y z roll pitch yaw): -1.2  1.5  0.001  0  0  0
+    # Robot spawn: x=0.0  y=0.0  yaw=0.0
     waypoints: [-1.2, 1.5]
+    goal_tolerance: 0.20

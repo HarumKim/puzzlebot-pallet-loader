@@ -14,17 +14,23 @@ MAX_LIN = 0.3   # m/s
 MAX_ANG = 0.5   # rad/s
 
 # ── Controller gains ──────────────────────────────────────────────────────────
-KP_ANG  = 2.0
-KP_LIN  = 0.5
-KP_WALL = 1.5
+KP_ANG  = 2.0   # P gain for heading error
+KP_LIN  = 0.5   # P gain for distance to goal
+KP_WALL = 1.5   # P gain for wall-distance error
 
 # ── Thresholds ────────────────────────────────────────────────────────────────
-GOAL_TOL      = 0.15  # m  — waypoint reached tolerance
+DEFAULT_GOAL_TOL = 0.15  # m  — fallback when no YAML param is loaded
+GOAL_TOL      = DEFAULT_GOAL_TOL
 OBS_THRESHOLD = 0.40  # m  — frontal distance to trigger wall following
-WALL_DIST     = 0.35  # m  — desired lateral distance while following wall
+WALL_DIST     = 0.5   # m  — desired lateral distance while following wall
 FORWARD_HALF  = 30    # deg — half-width of front obstacle detection cone
+CORNER_CLEARANCE = 0.60  # m — forward travel needed to clear corner physically before turning
 MLINE_TOL     = 0.10  # m  — perpendicular distance to consider robot on M-line
 MIN_WALL_STEPS = 40   # control ticks before M-line re-entry is checked
+STUCK_TIMEOUT = 2.0   # s  — time without movement before unstuck maneuver
+STUCK_DIST    = 0.05  # m  — minimum displacement to consider robot moving
+OBS_EXIT_THRESHOLD = 0.85  # m  — front clearance required to leave FOLLOW_WALL
+HEADING_TOL   = 45    # deg — max heading error to consider path toward goal clear
 
 
 class Bug2Node(Node):
@@ -37,9 +43,11 @@ class Bug2Node(Node):
         self.create_subscription(Odometry, '/ground_truth', self._odom_cb, 10)
 
         self.declare_parameter('waypoints', DEFAULT_WAYPOINTS)
+        self.declare_parameter('goal_tolerance', DEFAULT_GOAL_TOL)
         flat = list(self.get_parameter('waypoints').value)
         self.waypoints = [(flat[i], flat[i + 1]) for i in range(0, len(flat) - 1, 2)]
-        self.get_logger().info(f'Waypoints loaded: {self.waypoints}')
+        self._goal_tol = float(self.get_parameter('goal_tolerance').value)
+        self.get_logger().info(f'Waypoints loaded: {self.waypoints}  goal_tolerance={self._goal_tol}')
         self.wp_idx = 0
 
         self.x = self.y = self.yaw = 0.0
@@ -52,6 +60,9 @@ class Bug2Node(Node):
         self._hit_dist: float | None = None
         # Ticks spent in FOLLOW_WALL (prevents immediate M-line re-entry)
         self._wall_steps = 0
+        self._corner_entry_pos: tuple[float, float] | None = None
+        self._stuck_check_pos = (0.0, 0.0)
+        self._stuck_elapsed   = 0.0
 
         self._state = 'INIT'
 
@@ -93,7 +104,7 @@ class Bug2Node(Node):
         dist   = math.hypot(dx, dy)
         front  = self._min_range(-FORWARD_HALF, FORWARD_HALF)
 
-        if dist < GOAL_TOL:
+        if dist < self._goal_tol:
             self.get_logger().info(f'Waypoint {self.wp_idx} reached.')
             self.wp_idx += 1
             if self.wp_idx < len(self.waypoints):
@@ -107,23 +118,65 @@ class Bug2Node(Node):
         if self._state == 'GO_TO_GOAL':
             if front < OBS_THRESHOLD:
                 self.get_logger().info('Obstacle hit — entering wall following.')
-                self._state      = 'FOLLOW_WALL'
-                self._hit_dist   = dist
-                self._wall_steps = 0
+                self._state           = 'FOLLOW_WALL'
+                self._hit_dist        = dist
+                self._wall_steps      = 0
+                self._stuck_check_pos = (self.x, self.y)
+                self._stuck_elapsed   = 0.0
             else:
                 self._go_to_goal(dx, dy, dist)
 
         else:  # FOLLOW_WALL
             self._wall_steps += 1
-            if self._wall_steps > MIN_WALL_STEPS:
-                # Leave wall when back on M-line AND closer to goal than when we left it
-                if self._on_mline(gx, gy) and dist < self._hit_dist - 0.05:
-                    self.get_logger().info('Back on M-line closer to goal — resuming.')
-                    self._state      = 'GO_TO_GOAL'
-                    self._hit_dist   = None
-                    self._wall_steps = 0
+
+            # Stuck detection: wheel caught on wall without LIDAR contact
+            moved = math.hypot(self.x - self._stuck_check_pos[0],
+                               self.y - self._stuck_check_pos[1])
+            if moved > STUCK_DIST:
+                self._stuck_check_pos = (self.x, self.y)
+                self._stuck_elapsed   = 0.0
+            else:
+                self._stuck_elapsed += self._dt
+                if self._stuck_elapsed >= STUCK_TIMEOUT:
+                    self.get_logger().info('Stuck detected — nudging left.')
+                    self._cmd(0.0, MAX_ANG)
+                    self._stuck_elapsed   = 0.0
+                    self._stuck_check_pos = (self.x, self.y)
                     return
-            self._follow_wall(front)
+
+            right        = self._min_range(-135, -50)
+            outer_corner = right > WALL_DIST * 2.5
+            if outer_corner:
+                if self._corner_entry_pos is None:
+                    self._corner_entry_pos = (self.x, self.y)
+                corner_cleared = math.hypot(
+                    self.x - self._corner_entry_pos[0],
+                    self.y - self._corner_entry_pos[1],
+                ) >= CORNER_CLEARANCE
+            else:
+                self._corner_entry_pos = None
+                corner_cleared = True
+
+            if self._wall_steps > MIN_WALL_STEPS:
+                goal_angle  = math.atan2(dy, dx)
+                heading_err = _wrap(goal_angle - self.yaw)
+                closer      = dist < self._hit_dist - 0.05
+
+                on_mline   = self._on_mline(gx, gy) and closer
+                path_clear = (front > OBS_EXIT_THRESHOLD
+                              and abs(heading_err) < math.radians(HEADING_TOL)
+                              and closer)
+
+                if on_mline or path_clear:
+                    reason = 'M-line' if on_mline else 'path clear'
+                    self.get_logger().info(f'Resuming to goal ({reason}).')
+                    self._state           = 'GO_TO_GOAL'
+                    self._hit_dist        = None
+                    self._wall_steps      = 0
+                    self._corner_entry_pos = None
+                    self._stuck_elapsed   = 0.0
+                    return
+            self._follow_wall(front, corner_cleared)
 
     # ── Behaviors ─────────────────────────────────────────────────────────────
 
@@ -133,18 +186,31 @@ class Bug2Node(Node):
         angular     = _clamp(KP_ANG * heading_err, -MAX_ANG, MAX_ANG)
         linear      = _clamp(KP_LIN * dist, 0.0, MAX_LIN)
         if abs(heading_err) > math.radians(45):
-            linear = 0.0
+            # Avanzar levemente al rotar ayuda a que las llantas traseras
+            # se separen de las paredes en lugar de pivotar y golpearlas.
+            linear = MAX_LIN * 0.15
         self._cmd(linear, angular)
 
-    def _follow_wall(self, front: float):
-        # Right-hand wall following
-        right = self._min_range(-100, -60)
-        err   = right - WALL_DIST          # positive → too far → steer right
-        if front < OBS_THRESHOLD:          # blocked in front → turn left in place
+    def _follow_wall(self, front: float, corner_cleared: bool = True):
+        # Right-hand wall following: keep the wall on the right side
+        right        = self._min_range(-135, -50)
+        front_right  = self._min_range(-60, -30)   # diagonal blind spot between front and right sensors
+        err          = right - WALL_DIST            # positive → too far from wall → turn right
+        outer_corner = right > WALL_DIST * 2.5
+        if front < OBS_THRESHOLD:                              # inner corner / blocked front → turn left
             self._cmd(0.0, MAX_ANG)
+        elif not outer_corner and front_right < OBS_THRESHOLD:  # diagonal wall → turn left
+            self._cmd(0.0, MAX_ANG)
+        elif outer_corner:
+            if not corner_cleared:                             # llanta aún en esquina → avanzar recto
+                self._cmd(MAX_LIN * 0.5, 0.0)
+            elif front_right < OBS_THRESHOLD:                  # algo en la curva → recto
+                self._cmd(MAX_LIN * 0.5, 0.0)
+            else:                                              # despejado → girar derecha
+                self._cmd(MAX_LIN * 0.5, -MAX_ANG * 0.5)
         else:
             angular = _clamp(-KP_WALL * err, -MAX_ANG, MAX_ANG)
-            self._cmd(MAX_LIN * 0.6, angular)
+            self._cmd(MAX_LIN * 0.8, angular)
 
     # ── Geometry helpers ──────────────────────────────────────────────────────
 
