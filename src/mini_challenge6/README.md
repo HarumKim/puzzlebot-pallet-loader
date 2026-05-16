@@ -32,7 +32,9 @@ Ambos nodos leen el waypoint objetivo y la tolerancia de llegada desde un archiv
 
 ## Resultado de la Simulación
 
-<img width="1252" height="871" alt="minichallenge6" src="https://github.com/user-attachments/assets/96fc90df-4ca7-40a9-acab-c1588775be36" />
+<div align="center">
+  <img src="https://github.com/user-attachments/assets/96fc90df-4ca7-40a9-acab-c1588775be36" width="50%" alt="Mini Challenge 6">
+</div>
 
 ## ¿Cómo ejecutar la simulación?
 
