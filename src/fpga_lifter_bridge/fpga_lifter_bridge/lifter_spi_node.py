@@ -18,14 +18,21 @@ class LifterSpiBridge(Node):
         # parámetros de SPI
         self.declare_parameter('spi_bus', 0)
         self.declare_parameter('spi_device', 0)
-        self.declare_parameter('spi_speed_hz', 1000000)
+        self.declare_parameter('spi_speed_hz', 2000000)
 
         self.spi_bus = int(self.get_parameter('spi_bus').value)
         self.spi_device = int(self.get_parameter('spi_device').value)
         self.spi_speed_hz = int(self.get_parameter('spi_speed_hz').value)
 
         self.spi = spidev.SpiDev()
-        self.spi.open(self.spi_bus, self.spi_device)
+
+        try:
+            self.spi.open(self.spi_bus, self.spi_device)
+        except OSError as error:
+            self.get_logger().fatal(
+                f'Could not open /dev/spidev{self.spi_bus}.{self.spi_device}: {error}'
+            )
+            raise
 
         self.spi.mode = 0b00
         self.spi.max_speed_hz = self.spi_speed_hz
@@ -34,6 +41,8 @@ class LifterSpiBridge(Node):
         self.desired_lifter_state = False
         self.confirmed_lifter_state = False
         self.last_logged_state = None
+        self.last_sent_lifter_state = None
+        self.last_confirmed_lifter_state = None
 
         self.lifter_sub = self.create_subscription(
             Bool,
@@ -48,7 +57,7 @@ class LifterSpiBridge(Node):
             10
         )
 
-        self.timer = self.create_timer(0.1, self.timer_callback)
+        self.timer = self.create_timer(1.0, self.timer_callback)
 
         self.get_logger().info(
             f'Lifter SPI bridge started using /dev/spidev{self.spi_bus}.{self.spi_device}'
@@ -112,21 +121,54 @@ class LifterSpiBridge(Node):
         return None
 
     def lifter_callback(self, msg):
-        self.desired_lifter_state = bool(msg.data)
+        new_state = bool(msg.data)
+
+        if new_state == self.desired_lifter_state:
+            return
+
+        self.desired_lifter_state = new_state
 
         if self.desired_lifter_state:
             self.get_logger().info('Received /lifter command: ON')
         else:
             self.get_logger().info('Received /lifter command: OFF')
 
-    def timer_callback(self):
-        """
-        Periodically send the desired lifter state to the FPGA and publish
-        the confirmed state returned by the FPGA.
-        """
         confirmed_state = self.send_lifter_command()
 
         if confirmed_state is None:
+            self.get_logger().warn('No valid FPGA confirmation received.')
+            return
+
+        self.confirmed_lifter_state = confirmed_state
+        self.last_sent_lifter_state = self.desired_lifter_state
+
+        confirm_msg = Bool()
+        confirm_msg.data = self.confirmed_lifter_state
+        self.confirm_pub.publish(confirm_msg)
+
+        self.last_logged_state = self.confirmed_lifter_state
+
+        if self.confirmed_lifter_state:
+            self.get_logger().info('FPGA confirmation: LIFTER ON')
+        else:
+            self.get_logger().info('FPGA confirmation: LIFTER OFF')
+
+    def timer_callback(self):
+        """
+        Optional status polling.
+        It does not resend ON/OFF commands; it only asks the FPGA for current status.
+        """
+
+        status_response = self.transfer_byte(CMD_READ_STATUS)
+
+        if status_response == FPGA_CONFIRM_ON:
+            confirmed_state = True
+        elif status_response == FPGA_CONFIRM_OFF:
+            confirmed_state = False
+        else:
+            return
+
+        if confirmed_state == self.confirmed_lifter_state:
             return
 
         self.confirmed_lifter_state = confirmed_state
@@ -135,13 +177,10 @@ class LifterSpiBridge(Node):
         confirm_msg.data = self.confirmed_lifter_state
         self.confirm_pub.publish(confirm_msg)
 
-        if self.last_logged_state != self.confirmed_lifter_state:
-            if self.confirmed_lifter_state:
-                self.get_logger().info('FPGA confirmation: LIFTER ON')
-            else:
-                self.get_logger().info('FPGA confirmation: LIFTER OFF')
-
-            self.last_logged_state = self.confirmed_lifter_state
+        if self.confirmed_lifter_state:
+            self.get_logger().info('FPGA status update: LIFTER ON')
+        else:
+            self.get_logger().info('FPGA status update: LIFTER OFF')
 
 def main(args=None):
     rclpy.init(args=args)

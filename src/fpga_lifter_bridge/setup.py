@@ -25,6 +25,7 @@ setup(
     entry_points={
         'console_scripts': [
             'lifter_spi_node = fpga_lifter_bridge.lifter_spi_node:main',
+            'lifter_keyboard_test = fpga_lifter_bridge.lifter_keyboard_test:main',
         ],
     },
 )
