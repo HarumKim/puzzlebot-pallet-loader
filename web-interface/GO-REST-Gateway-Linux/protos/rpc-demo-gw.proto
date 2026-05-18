@@ -1,0 +1,23 @@
+//author AECL
+
+syntax = "proto3";
+import "google/protobuf/empty.proto";
+
+package RPCDemoPkg;
+
+option go_package = "example.com/rest-gateway-demo/protos";
+import "google/api/annotations.proto";
+
+// Peticion y direccion 
+service RPCDemo {
+    rpc GetMultCoords (google.protobuf.Empty) returns (MultCoords){
+        option(google.api.http) = {
+            post: "/restgatewaydemo/getmultcoords" 
+            body: "*"
+        }; 
+    };
+}
+
+message MultCoords {
+    repeated double values = 1 [packed=true]; 
+}
