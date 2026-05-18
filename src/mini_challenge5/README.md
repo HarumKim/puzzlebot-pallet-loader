@@ -19,7 +19,7 @@ Para lograr esto, se implementó un nodo personalizado en Python (`puzzlebot_sim
 
 <!-- Inserta aquí la imagen o GIF del resultado (e.g., captura de RViz2 mostrando la trayectoria y la elipse de covarianza) -->
 <div align="center">
-  <img src="" width="50%" alt="Puzzlebot Mini Challenge 5 Simulation">
+  <img src="https://github.com/user-attachments/assets/d7591f0b-f8ef-47a5-8fa7-a6425ede7a67" width="50%" alt="Puzzlebot Mini Challenge 5 Simulation">
 </div>
 
 ## ¿Cómo ejecutar la simulación?
