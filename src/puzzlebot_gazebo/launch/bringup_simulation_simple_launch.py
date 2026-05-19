@@ -12,10 +12,10 @@ def generate_launch_description():
     # -----------------------------------------------------------------------------
     
     # Name of the Gazebo world to load
-    world = 'obstacle_avoidance_4.world'
+    world = 'obstacle_avoidance_3.world'
 
     # General Gazebo settings
-    pause = 'true'           # Start Gazebo in paused state
+    pause = 'false'           # Start Gazebo in paused state
     verbosity = '4'           # Gazebo log verbosity level
     use_sim_time = 'true'     # Enable use of simulated clock (for ROS time sync)
 

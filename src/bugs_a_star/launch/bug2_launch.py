@@ -8,22 +8,21 @@ from ament_index_python.packages import get_package_share_directory
 
 def launch_setup(context, *args, **kwargs):
     world = LaunchConfiguration('world').perform(context)
-    # Strip extension to get the config file name (e.g. "obstacle_avoidance_4")
     world_name = world.rsplit('.', 1)[0]
 
-    pkg = get_package_share_directory('mini_challenge6')
+    pkg = get_package_share_directory('bugs_a_star')
     config_file = os.path.join(pkg, 'config', world_name + '.yaml')
 
     params = [config_file] if os.path.isfile(config_file) else []
     if not params:
-        print(f'[bug0_launch] WARNING: no config found for world "{world_name}", '
+        print(f'[bug2_launch] WARNING: no config found for world "{world_name}", '
               'using hardcoded waypoints.')
 
     return [
         Node(
-            package='mini_challenge6',
-            executable='bug0_node',
-            name='bug0_node',
+            package='bugs_a_star',
+            executable='bug2_node',
+            name='bug2_node',
             output='screen',
             parameters=params,
         )
@@ -34,8 +33,8 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument(
             'world',
-            default_value='obstacle_avoidance_2.world',
-            description='World file name — must match a YAML in mini_challenge6/config/'
+            default_value='obstacle_avoidance_4.world',
+            description='World file name — must match a YAML in bugs_a_star/config/'
         ),
         OpaqueFunction(function=launch_setup),
     ])

@@ -5,10 +5,9 @@ from launch.actions import (
     DeclareLaunchArgument, SetEnvironmentVariable, IncludeLaunchDescription
 )
 from launch.substitutions import PathJoinSubstitution, LaunchConfiguration, TextSubstitution
-from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.conditions import IfCondition, UnlessCondition
 from launch_ros.actions import Node
-
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 
 def generate_launch_description():
     # ----------------------
@@ -74,8 +73,8 @@ def generate_launch_description():
     start_gazebo_server_run = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(gz_launch_path),
         launch_arguments={
-        'gz_args': ['-r ','-v ', gazebo_verbosity, ' ', world_path],
-        'on_exit_shutdown': 'true',
+            'gz_args': ['-r ', '-v ', gazebo_verbosity, ' ', world_path],
+            'on_exit_shutdown': 'true',
         }.items(),
         condition=UnlessCondition(pause)
     )
@@ -83,13 +82,12 @@ def generate_launch_description():
     start_gazebo_server_paused = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(gz_launch_path),
         launch_arguments={
-            'gz_args':  ['-v ', gazebo_verbosity, ' ', world_path],
+            'gz_args': ['-v ', gazebo_verbosity, ' ', world_path],
             'on_exit_shutdown': 'true',
             'pause': 'true',
         }.items(),
         condition=IfCondition(pause)
     )
-
     start_gazebo_ros_bridge_cmd = Node(
                     package='ros_gz_bridge',
                     executable='parameter_bridge',

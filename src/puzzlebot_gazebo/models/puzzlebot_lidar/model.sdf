@@ -247,29 +247,26 @@
             <child>caster</child>
         </joint>
                   
-        <!-- Puzzlebot differential drive plugin -->
-        <plugin name="DiffDynamicPlugin" filename="libDiffDynamicPlugin.so">
-            <leftJoint>left_wheel_joint</leftJoint>
-            <rightJoint>right_wheel_joint</rightJoint>
-            <cmd_R_topic>cmd_R</cmd_R_topic>
-            <cmd_L_topic>cmd_L</cmd_L_topic>
-            <cmd_vel_topic>cmd_vel</cmd_vel_topic>
-            <enc_R_topic>enc_R</enc_R_topic>
-            <enc_L_topic>enc_L</enc_L_topic>
-            <mot_Vmax>5</mot_Vmax>
-            <mot_J>0.0000007</mot_J>
-            <mot_R>3</mot_R>
-            <mot_L>0.01</mot_L>
-            <mot_K>0.008</mot_K>
-            <mot_b>0.000002</mot_b>
-            <mot_gear>34</mot_gear>
-            <robot_width>0.07</robot_width>
+        <!-- Puzzlebot differential drive plugin - Ignition Gazebo 6 native -->
+        <plugin
+            filename="ignition-gazebo-diff-drive-system"
+            name="ignition::gazebo::systems::DiffDrive">
+
+            <left_joint>left_wheel_joint</left_joint>
+            <right_joint>right_wheel_joint</right_joint>
+
+            <wheel_separation>0.19</wheel_separation>
             <wheel_radius>0.03</wheel_radius>
-            <pid_Kp>0.1</pid_Kp>
-            <pid_Ti>0.05</pid_Ti>
-            <pid_Td>0</pid_Td>
-            <input_type>3</input_type>
+
+            <topic>cmd_vel</topic>
+
+            <odom_topic>ground_truth</odom_topic>
+            <odom_publish_frequency>50</odom_publish_frequency>
+
+            <frame_id>odom</frame_id>
+            <child_frame_id>chassis</child_frame_id>
         </plugin>
+        
         
         <frame name="lidar_frame" attached_to='chassis'>
             <pose>0 0 0.06 0 0 0</pose>
@@ -284,4 +281,3 @@
     </model>
 
 </sdf>
-

@@ -11,7 +11,7 @@ def launch_setup(context, *args, **kwargs):
     # Strip extension to get the config file name (e.g. "obstacle_avoidance_4")
     world_name = world.rsplit('.', 1)[0]
 
-    pkg = get_package_share_directory('mini_challenge6')
+    pkg = get_package_share_directory('bugs_a_star')
     config_file = os.path.join(pkg, 'config', world_name + '.yaml')
 
     params = [config_file] if os.path.isfile(config_file) else []
@@ -21,7 +21,7 @@ def launch_setup(context, *args, **kwargs):
 
     return [
         Node(
-            package='mini_challenge6',
+            package='bugs_a_star',
             executable='bug0_node',
             name='bug0_node',
             output='screen',
@@ -35,7 +35,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'world',
             default_value='obstacle_avoidance_2.world',
-            description='World file name — must match a YAML in mini_challenge6/config/'
+            description='World file name — must match a YAML in bugs_a_star/config/'
         ),
         OpaqueFunction(function=launch_setup),
     ])
