@@ -1,32 +1,78 @@
 <!DOCTYPE html>
-<html>
+<html lang="es">
+
   <head>
-    <title>API Call Result & Video Feed</title>
-    <script>
-      function updateResult() {
-        fetch('/api/result')
-          .then(response => response.text())
-          .then(result => {
-            document.getElementById('result').textContent = result;
-          })
-          .catch(error => console.error('Error fetching data:', error));
-      }
-      setInterval(updateResult, 500);
-    </script>
-    <style>
-      body { font-family: Arial, sans-serif; text-align: center; }
-      .video-container { margin-top: 20px; }
-      img { border: 2px solid #333; max-width: 640px; width: 100%; }
-    </style>
+    <title>Puzzlebot Web Interface</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <script src="script.js" defer></script>
   </head>
+
   <body>
-    <h1>API Call Result</h1>
-    <p><strong>Coordenadas (X, Y):</strong> <span id="result">Cargando...</span></p>
-    
-    <div class="video-container">
-      <h2>Detección de Objetos en Tiempo Real</h2>
-      <!-- La etiqueta img consume el stream de video de Flask -->
-      <img src="{{ url_for('video_feed') }}" alt="ROS 2 Video Stream">
+
+    <div class="dashboard">
+
+      <header class="top-bar">
+        <div class="box">
+          <p class="box-label">Sistema</p>
+          <h1><span class="status-dot"></span> Puzzlegoticas Live</h1>
+        </div>
+
+        <div class="box">
+          <p class="box-label">Estado</p>
+          <h1> ALINEANDO </h1>
+        </div>
+
+        <div class="box">
+          <p class="box-label">Coordenadas</p>
+          <h1 class="coords">X: 0.00 &nbsp;|&nbsp; Y: 0.00</h1>
+        </div>
+      </header>
+
+      <main class="main-content">
+        <div class="camera">
+          <h2>Front Camera View</h2>
+          <img src="/video_feed" alt="Front Camera View">
+        </div>
+
+        <div class="localization">
+          <h2>Real Time Localization Map</h2>
+          <img src="/map_feed" alt="Puzzlebot real time localization">
+        </div>
+      </main>
+
+      <footer class="bottom-bar">
+        <span class="mic-icon">&#127908;</span>
+        <h1>Voice Recognition</h1>
+        <div class="voice-controls">
+          <button class="btn-voice">START</button>
+          <div class="voice-waves">
+            <span></span>
+            <span></span>
+            <span></span>
+            <span></span>
+            <span></span>
+            <span></span>
+            <span></span>
+            <span></span>
+            <span></span>
+            <span></span>
+            <span></span>
+            <span></span>
+            <span></span>
+            <span></span>
+            <span></span>
+            <span></span>
+            <span></span>
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+          <span class="voice-result">LIFT</span>
+        </div>
+      </footer>
+
     </div>
   </body>
+
 </html>

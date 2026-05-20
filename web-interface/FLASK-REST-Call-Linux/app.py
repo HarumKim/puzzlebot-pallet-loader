@@ -5,36 +5,37 @@ import schedule
 import time
 import threading
 
-# Nuevas importaciones para ROS 2 y procesamiento de imágenes
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
 import cv2
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='templates', static_url_path='')
 result = None
-latest_frame = None  # Variable global para guardar el frame más reciente
+latest_frame = None
+latest_map_frame = None
 
-# Clase del Nodo de ROS 2 para suscribirse a la imagen
 class ImageSubscriber(Node):
     def __init__(self):
         super().__init__('flask_web_subscriber')
-        self.subscription = self.create_subscription(
-            Image,
-            '/image_result',
-            self.listener_callback,
-            10)
         self.bridge = CvBridge()
+        self.create_subscription(Image, '/image_result', self.camera_callback, 10)
+        self.create_subscription(Image, '/localization', self.map_callback, 10)
 
-    def listener_callback(self, data):
+    def camera_callback(self, data):
         global latest_frame
-        # Convertir mensaje de ROS a imagen de OpenCV
         cv_image = self.bridge.imgmsg_to_cv2(data, desired_encoding="passthrough")
-        # Codificar la imagen a formato JPEG
         ret, buffer = cv2.imencode('.jpg', cv_image)
         if ret:
             latest_frame = buffer.tobytes()
+
+    def map_callback(self, data):
+        global latest_map_frame
+        cv_image = self.bridge.imgmsg_to_cv2(data, desired_encoding="passthrough")
+        ret, buffer = cv2.imencode('.jpg', cv_image)
+        if ret:
+            latest_map_frame = buffer.tobytes()
 
 def call_api():
     global result
@@ -64,14 +65,19 @@ def ros2_thread():
     image_subscriber.destroy_node()
     rclpy.shutdown()
 
-# Función generadora para el streaming de video
 def gen_frames():
-    global latest_frame
     while True:
         if latest_frame is not None:
             yield (b'--frame\r\n'
                    b'Content-Type: image/jpeg\r\n\r\n' + latest_frame + b'\r\n')
-        time.sleep(0.03) # Espera pequeña para limitar el frame rate (~30 FPS)
+        time.sleep(0.03)
+
+def gen_map_frames():
+    while True:
+        if latest_map_frame is not None:
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + latest_map_frame + b'\r\n')
+        time.sleep(0.03)
 
 if __name__ == '__main__':
     call_api()  # Llamada inicial
@@ -91,10 +97,13 @@ if __name__ == '__main__':
             return str(result["values"][0]) + "," + str(result["values"][1])
         return "0.0,0.0"
 
-    # Ruta para el streaming de video
     @app.route('/video_feed')
     def video_feed():
         return Response(gen_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+    @app.route('/map_feed')
+    def map_feed():
+        return Response(gen_map_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
     @app.route('/')
     def show_result():

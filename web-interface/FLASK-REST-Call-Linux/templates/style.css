@@ -1,0 +1,260 @@
+
+
+/* ── Palette ─────────────────────────────── */
+:root {
+    --bg-primary:  #020915;
+    --bg-card:     #0d1b2a;
+    --border:      #1e3a5f;
+    --accent:      #58a6ff;
+    --text-primary:#e6edf3;
+    --text-muted:  #8b949e;
+    --shadow:      rgba(0, 0, 0, 0.45);
+}
+
+/* ── Reset ──────────────────────────────────── */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'JetBrains Mono', monospace;
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    text-align: center;
+    min-height: 100vh;
+}
+
+/* ── Dashboard  ────────────────────────────────────── */
+.dashboard {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    padding: 12px;
+    gap: 12px;
+}
+
+/* ── Top bar ───────────────────────────────────────── */
+.top-bar {
+    display: flex;
+    gap: 12px;
+}
+
+.box {
+    flex: 1;
+    text-align: left;
+    background-color: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+    padding: 14px 20px;
+    box-shadow: 0 4px 12px var(--shadow);
+}
+
+.box-label {
+    font-size: 0.7rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+
+.box h1 {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.box:first-child h1 {
+    color: var(--text-primary);
+}
+
+.coords {
+    color: var(--accent);
+}
+
+/* ── Status Dot  ───────────────────── */
+.status-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background-color: #ff0000;
+    margin-right: 8px;
+    vertical-align: middle;
+    animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1;   box-shadow: 0 0 6px #ff0000; }
+    50%       { opacity: 0.3; box-shadow: none; }
+}
+
+/* ── Main Content ───────────────────────────── */
+.main-content {
+    display: flex;
+    justify-content: space-evenly;
+    gap: 12px;
+    flex: 1;
+}
+
+.camera,
+.localization {
+    flex: 1;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+    padding: 20px;
+    box-shadow: 0 4px 12px var(--shadow);
+    transition: border-color 0.25s;
+}
+
+.camera:hover,
+.localization:hover {
+    border-color: var(--accent);
+}
+
+.camera h2,
+.localization h2 {
+    font-size: 0.78rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 12px;
+}
+
+img {
+    border: 2px solid var(--border);
+    border-radius: 0.5rem;
+    width: 100%;
+    height: auto;
+    aspect-ratio: 4/3;
+    display: block;
+    transition: border-color 0.25s;
+}
+
+img:hover {
+    border-color: var(--accent);
+}
+
+/* ── Footer – Voice Recognition ────────────────────── */
+.bottom-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    text-align: left;
+    padding: 14px 22px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-top: 2px solid var(--accent);
+    border-radius: 0.75rem;
+    box-shadow: 0 4px 12px var(--shadow);
+}
+
+.bottom-bar h1 {
+    font-size: 0.95rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--text-primary);
+    border-right: 1px solid var(--border);
+    padding-right: 16px;
+}
+
+.mic-icon {
+    font-size: 1.4rem;
+}
+
+.voice-result {
+    font-size: 0.95rem;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(#e6edf3);
+    border-left: 1px solid var(--border);
+    padding-left: 12px;
+}
+
+.voice-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.btn-voice {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: #fff;
+    background: #22863a;
+    border: 1px solid #2ea043;
+    border-radius: 0.5rem;
+    padding: 8px 20px;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.btn-voice:hover {
+    background: #2ea043;
+    border-color: #3fb950;
+}
+
+.btn-voice.paused {
+    background: #b91c1c;
+    border-color: #ef4444;
+}
+
+.btn-voice.paused:hover {
+    background: #ef4444;
+    border-color: #f87171;
+}
+
+/* ── Voice waves ───────────────────────────────────── */
+.voice-waves {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    height: 24px;
+}
+
+.voice-waves span {
+    display: block;
+    width: 5px;
+    height: 6px;
+    background: #58a6ff;
+    border-radius: 2px;
+    animation: wave 0.8s ease-in-out infinite alternate;
+    animation-play-state: paused;
+}
+
+.voice-waves span:nth-child(1)  { animation-delay: 0s;    }
+.voice-waves span:nth-child(2)  { animation-delay: 0.05s; }
+.voice-waves span:nth-child(3)  { animation-delay: 0.1s;  }
+.voice-waves span:nth-child(4)  { animation-delay: 0.15s; }
+.voice-waves span:nth-child(5)  { animation-delay: 0.2s;  }
+.voice-waves span:nth-child(6)  { animation-delay: 0.25s; }
+.voice-waves span:nth-child(7)  { animation-delay: 0.3s;  }
+.voice-waves span:nth-child(8)  { animation-delay: 0.35s; }
+.voice-waves span:nth-child(9)  { animation-delay: 0.4s;  }
+.voice-waves span:nth-child(10) { animation-delay: 0.45s; }
+.voice-waves span:nth-child(11) { animation-delay: 0.45s; }
+.voice-waves span:nth-child(12) { animation-delay: 0.4s;  }
+.voice-waves span:nth-child(13) { animation-delay: 0.35s; }
+.voice-waves span:nth-child(14) { animation-delay: 0.3s;  }
+.voice-waves span:nth-child(15) { animation-delay: 0.25s; }
+.voice-waves span:nth-child(16) { animation-delay: 0.2s;  }
+.voice-waves span:nth-child(17) { animation-delay: 0.15s; }
+.voice-waves span:nth-child(18) { animation-delay: 0.1s;  }
+.voice-waves span:nth-child(19) { animation-delay: 0.05s; }
+.voice-waves span:nth-child(20) { animation-delay: 0s;    }
+
+@keyframes wave {
+    from { height: 4px;  }
+    to   { height: 22px; }
+}
+
+.voice-waves.active span {
+    animation-play-state: running;
+}
+
