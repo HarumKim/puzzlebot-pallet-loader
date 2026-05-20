@@ -8,6 +8,7 @@ import threading
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image
+from std_msgs.msg import String
 from cv_bridge import CvBridge
 import cv2
 
@@ -15,6 +16,8 @@ app = Flask(__name__, static_folder='templates', static_url_path='')
 result = None
 latest_frame = None
 latest_map_frame = None
+latest_voice_status = '---'
+ros_node = None  # referencia global para publicar desde las rutas Flask
 
 class ImageSubscriber(Node):
     def __init__(self):
@@ -22,6 +25,8 @@ class ImageSubscriber(Node):
         self.bridge = CvBridge()
         self.create_subscription(Image, '/image_result', self.camera_callback, 10)
         self.create_subscription(Image, '/localization', self.map_callback, 10)
+        self.create_subscription(String, '/voice/status', self.voice_callback, 10)
+        self.voice_pub = self.create_publisher(String, '/voice/command', 10)
 
     def camera_callback(self, data):
         global latest_frame
@@ -36,6 +41,15 @@ class ImageSubscriber(Node):
         ret, buffer = cv2.imencode('.jpg', cv_image)
         if ret:
             latest_map_frame = buffer.tobytes()
+
+    def voice_callback(self, data):
+        global latest_voice_status
+        latest_voice_status = data.data
+
+    def send_voice_command(self, command):
+        msg = String()
+        msg.data = command
+        self.voice_pub.publish(msg)
 
 def call_api():
     global result
@@ -59,10 +73,11 @@ def schedule_api_call():
 
 # Hilo dedicado para correr el nodo de ROS 2
 def ros2_thread():
+    global ros_node
     rclpy.init()
-    image_subscriber = ImageSubscriber()
-    rclpy.spin(image_subscriber)
-    image_subscriber.destroy_node()
+    ros_node = ImageSubscriber()
+    rclpy.spin(ros_node)
+    ros_node.destroy_node()
     rclpy.shutdown()
 
 def gen_frames():
@@ -104,6 +119,22 @@ if __name__ == '__main__':
     @app.route('/map_feed')
     def map_feed():
         return Response(gen_map_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+    @app.route('/voice/start', methods=['POST'])
+    def voice_start():
+        if ros_node:
+            ros_node.send_voice_command('start')
+        return '', 204
+
+    @app.route('/voice/stop', methods=['POST'])
+    def voice_stop():
+        if ros_node:
+            ros_node.send_voice_command('stop')
+        return '', 204
+
+    @app.route('/api/voice_status')
+    def get_voice_status():
+        return latest_voice_status
 
     @app.route('/')
     def show_result():

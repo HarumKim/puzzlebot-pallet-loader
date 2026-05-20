@@ -25,6 +25,7 @@ setup(
     entry_points={
         'console_scripts': [
             'camera_publisher = puzzlebot_pallet_loader.camera_publisher:main',
+            'voice_recognition = puzzlebot_pallet_loader.voice_recognition:main',
         ],
     },
 )
