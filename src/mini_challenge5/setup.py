@@ -24,7 +24,7 @@ setup(
     maintainer_email='neronf123@gmail.com',
     description='Challenge 5 - Noise and Perturbations in Puzzlebot Simulation',
     license='Apache-2.0',
-    tests_require=['pytest'],
+    #tests_require=['pytest'],
     entry_points={
         'console_scripts': [
             'puzzlebot_sim = mini_challenge5.puzzlebot_sim:main',

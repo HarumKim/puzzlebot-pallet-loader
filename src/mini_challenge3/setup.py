@@ -24,7 +24,7 @@ setup(
     maintainer_email='harumkim09@gmail.com',
     description='Challenge 3 - Puzzlebot Kinematic Sim',
     license='Apache-2.0',
-    tests_require=['pytest'],
+    #tests_require=['pytest'],
     entry_points={
         'console_scripts': [
             'joint_state_pub = mini_challenge3.joint_state_pub:main',

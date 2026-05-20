@@ -24,7 +24,7 @@ setup(
     maintainer_email='[EMAIL_ADDRESS]',
     description='Challenge 4 - Multi Puzzlebot Simulation',
     license='Apache-2.0',
-    tests_require=['pytest'],
+    #tests_require=['pytest'],
     entry_points={
         'console_scripts': [
             'joint_state_pub = multi_puzzlebot_sim.joint_state_pub:main',

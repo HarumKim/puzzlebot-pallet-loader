@@ -44,7 +44,7 @@ setup(
     maintainer_email='mario.mtz@manchester-robotics.com',
     description='Puzzlebot Gazebo Sim',
     license='Apache-2.0',
-    tests_require=['pytest'],
+    #tests_require=['pytest'],
     entry_points={
         'console_scripts': [
             'puzzlebot_gazebo = puzzlebot_gazebo.puzzlebot_gazebo:main'

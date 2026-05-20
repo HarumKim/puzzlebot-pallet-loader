@@ -32,6 +32,8 @@ setup(
         'console_scripts': [
             'bug0_node = bugs_a_star.bug0_node:main',
             'bug2_node = bugs_a_star.bug2_node:main',
+            'a_star_node = bugs_a_star.a_star_node:main',
+            'hybrid_a_star_bug0_node = bugs_a_star.hybrid_a_star_bug0_node:main',
         ],
     },
 )

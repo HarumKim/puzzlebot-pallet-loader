@@ -31,7 +31,7 @@ setup(
     maintainer_email='mario.mtz@manchester-robotics.com',
     description='Puzzlebot Description Files',
     license='Apache-2.0',
-    tests_require=['pytest'],
+    #tests_require=['pytest'],
     entry_points={
         'console_scripts': [
             'joint_state_publisher = puzzlebot_description.joint_state_publisher:main'
