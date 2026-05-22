@@ -11,7 +11,7 @@ Publica:
   - /map (nav_msgs/OccupancyGrid)
   - TF estática map → odom (identidad)
 
-Guarda el mapa como .pgm + .yaml al hacer Ctrl+C
+Guarda el mapa como .pgm + .yaml + .png al hacer Ctrl+C
 """
 
 import math
@@ -41,10 +41,10 @@ class OccupancyGridMapper(Node):
         self.declare_parameter('resolution', 0.05)        # m/celda
         self.declare_parameter('map_width', 15.0)          # metros
         self.declare_parameter('map_height', 15.0)         # metros
-        self.declare_parameter('log_odds_occ', 0.65)       # incremento al marcar ocupada
-        self.declare_parameter('log_odds_free', -0.40)     # incremento al marcar libre
-        self.declare_parameter('log_odds_min', -5.0)       # clamp inferior
-        self.declare_parameter('log_odds_max', 5.0)        # clamp superior
+        self.declare_parameter('log_odds_occ', 1.2)        # incremento al marcar ocupada
+        self.declare_parameter('log_odds_free', -0.4)      # incremento al marcar libre
+        self.declare_parameter('log_odds_min', -3.0)       # clamp inferior
+        self.declare_parameter('log_odds_max', 15.0)       # clamp superior
         self.declare_parameter('map_publish_rate', 1.0)    # Hz
         self.declare_parameter('save_path', os.path.join(
             os.path.expanduser('~'), 'SLAM', 'maps'))
@@ -91,9 +91,7 @@ class OccupancyGridMapper(Node):
 
         self.map_pub = self.create_publisher(OccupancyGrid, '/map', qos_map)
 
-        # ── TF estática: map → odom (identidad) ─────────────────────
-        self._static_tf = StaticTransformBroadcaster(self)
-        self._publish_static_tfs()
+        # TFs son publicados por ekf_slam_node — el mapper solo construye el grid
 
         # ── Timer para publicar mapa ─────────────────────────────────
         self.create_timer(1.0 / pub_rate, self._publish_map)
@@ -145,6 +143,13 @@ class OccupancyGridMapper(Node):
         rx, ry, ryaw = self.robot_x, self.robot_y, self.robot_yaw
         gx0, gy0 = self._world_to_grid(rx, ry)
 
+        # Si el robot está fuera del grid, no procesar
+        if not (0 <= gx0 < self.width and 0 <= gy0 < self.height):
+            self.get_logger().warn(
+                f'Robot fuera del mapa: ({rx:.2f}, {ry:.2f}) → grid ({gx0}, {gy0})',
+                throttle_duration_sec=2.0)
+            return
+
         angle = msg.angle_min
 
         for r in msg.ranges:
@@ -154,7 +159,13 @@ class OccupancyGridMapper(Node):
                 continue
 
             hit = r < msg.range_max
-            eff_range = r if hit else msg.range_max
+
+            # Si el rayo no golpea nada, no trazar (evita borrar paredes lejanas)
+            if not hit:
+                angle += msg.angle_increment
+                continue
+
+            eff_range = r
 
             # Punto final en coordenadas del mundo
             world_angle = ryaw + angle
@@ -175,8 +186,8 @@ class OccupancyGridMapper(Node):
                 if 0 <= cx < self.width and 0 <= cy < self.height:
                     self.log_odds[cy, cx] += self.log_free
 
-            # Celda final → ocupada (si el rayo pegó en algo)
-            if hit and cells:
+            # Celda final → ocupada (el rayo pegó en algo)
+            if cells:
                 lx, ly = cells[-1]
                 if 0 <= lx < self.width and 0 <= ly < self.height:
                     self.log_odds[ly, lx] += self.log_occ
@@ -273,8 +284,36 @@ class OccupancyGridMapper(Node):
             f.write(f'occupied_thresh: 0.65\n')
             f.write(f'free_thresh: 0.196\n')
 
-        self.get_logger().info(f'💾 Mapa guardado en {self.save_path}/')
+        # Guardar PNG
+        import struct
+        import zlib
 
+        png_path = os.path.join(self.save_path, 'map.png')
+        try:
+            h, w = img.shape
+            raw = b''
+            for row in img:
+                raw += b'\x00' + row.tobytes()
+
+            compressed = zlib.compress(raw)
+
+            def _chunk(chunk_type, data):
+                c = chunk_type + data
+                crc = struct.pack('>I', zlib.crc32(c) & 0xFFFFFFFF)
+                return struct.pack('>I', len(data)) + c + crc
+
+            with open(png_path, 'wb') as fp:
+                fp.write(b'\x89PNG\r\n\x1a\n')
+                ihdr_data = struct.pack('>IIBBBBB', w, h, 8, 0, 0, 0, 0)
+                fp.write(_chunk(b'IHDR', ihdr_data))
+                fp.write(_chunk(b'IDAT', compressed))
+                fp.write(_chunk(b'IEND', b''))
+
+            self.get_logger().info(f'🖼️  Mapa PNG guardado en {png_path}')
+        except Exception as e:
+            self.get_logger().warn(f'No se pudo guardar PNG: {e}')
+
+        self.get_logger().info(f'💾 Mapa guardado en {self.save_path}/')
 
 # ─────────────────────────────────────────────────────────────────────
 #  main
@@ -286,7 +325,7 @@ def main(args=None):
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
-        node.get_logger().info('Guardando mapa antes de cerrar...')
+        node.get_logger().info('Guardando mapa antes de cerrar... holiiis')
         node.save_map()
     finally:
         node.destroy_node()
