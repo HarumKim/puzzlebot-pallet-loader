@@ -1,6 +1,8 @@
+import os
+from glob import glob
 from setuptools import find_packages, setup
 
-package_name = 'camera_dataset'
+package_name = 'slam'
 
 setup(
     name=package_name,
@@ -10,22 +12,23 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
+
+	(os.path.join('share', package_name, 'launch'), glob('launch/*.py')),
+        (os.path.join('share', package_name, 'config'), glob('config/*.yaml')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='kim',
-    maintainer_email='harumkim09@gmail.com',
+    maintainer='puzzlebot',
+    maintainer_email='puzzlebot@todo.todo',
     description='TODO: Package description',
     license='TODO: License declaration',
-    extras_require={
-        'test': [
-            'pytest',
-        ],
-    },
+    tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'dataset_creator = camera_dataset.dataset_creator:main',
-            'camera_node= camera_dataset.camera_node:main'
+	   'odometry_node = slam.odometry_node:main',
+	   'mapper_node = slam.occupancy_grid_mapper:main',
+       'map_viewer = slam.map_viewer:main',
+       'mcl_node = slam.mcl_node:main',
         ],
     },
 )
