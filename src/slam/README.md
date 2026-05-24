@@ -82,21 +82,21 @@ Al presionar `Ctrl+C`, el mapa se guarda automáticamente en tres formatos:
 ### 1. Compilar el paquete
 
 ```bash
-cd ~/ros2_ws
-colcon build --packages-select puzzlebot_pallet_loader
+cd puzzlebot-pallet-loader
+colcon build 
 source install/setup.bash
 ```
 
 ### 2. Lanzar la odometría del robot
 
 ```bash
-ros2 run puzzlebot_pallet_loader odometry_node
+ros2 run slam odometry_node
 ```
 
 ### 3. Lanzar el mapper
 
 ```bash
-ros2 run puzzlebot_pallet_loader mapper_node
+ros2 run slam occupancy_grid_mapper
 ```
 
 ### 4. Visualizar el mapa en RViz2
@@ -108,21 +108,22 @@ rviz2
 
 ### 5. Guardar el mapa
 
-Presiona `Ctrl+C` en la terminal del `mapper_node`. El mapa se guardará automáticamente en `~/SLAM/maps/`.
+Presiona `Ctrl+C` en la terminal del `occupancy_grid_mapper`. El mapa se guardará automáticamente en `~/SLAM/maps/`.
 
 ---
 
 ## 📁 Estructura del Paquete
 
 ```
-puzzlebot_pallet_loader/
+slam/
 ├── config/
 │   └── slam_params.yaml          # Parámetros para slam_toolbox (alternativo)
 ├── launch/
 │   └── slam_launch.py            # Launch file para slam_toolbox
-├── puzzlebot_pallet_loader/
+├── slam/
 │   ├── occupancy_grid_mapper.py  # 🗺️ Nodo principal del mapper
 │   └── odometry_node.py          # 📍 Nodo de odometría
+|   └── mcl_node.py		  # Node de Localización por Montecarlo 
 ├── package.xml
 ├── setup.py
 └── README.md

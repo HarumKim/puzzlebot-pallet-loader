@@ -26,9 +26,9 @@ setup(
     entry_points={
         'console_scripts': [
 	   'odometry_node = slam.odometry_node:main',
-	   'mapper_node = slam.occupancy_grid_mapper:main',
-       'map_viewer = slam.map_viewer:main',
-       'mcl_node = slam.mcl_node:main',
+	   'occupancy_grid_mapper = slam.occupancy_grid_mapper:main',
+           'map_viewer = slam.map_viewer:main',
+           'mcl_node = slam.mcl_node:main',
         ],
     },
 )
