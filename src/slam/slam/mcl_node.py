@@ -611,6 +611,7 @@ class MCLNode(Node):
     # =====================================================
 
     def visualize(self):
+        return
         """Dibuja mapa, partículas, estimación MCL y odometría."""
         if not self.display_available:
             return
@@ -677,10 +678,21 @@ def main(args=None):
     except KeyboardInterrupt:
         node.get_logger().info('Cerrando MCL node...')
     finally:
-        node.destroy_node()
-        if rclpy.ok():
-            rclpy.shutdown()
-        cv2.destroyAllWindows()
+        try:
+            node.destroy_node()
+        except Exception:
+            pass
+
+        try:
+            if rclpy.ok():
+                rclpy.shutdown()
+        except Exception:
+            pass
+
+        try:
+            cv2.destroyAllWindows()
+        except Exception:
+            pass
 
 
 if __name__ == '__main__':
