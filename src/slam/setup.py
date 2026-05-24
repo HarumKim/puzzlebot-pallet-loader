@@ -24,7 +24,7 @@ setup(
     maintainer_email='puzzlebot@todo.todo',
     description='TODO: Package description',
     license='TODO: License declaration',
-    tests_require=['pytest'],
+    #tests_require=['pytest'],
     entry_points={
         'console_scripts': [
 	   'odometry_node = slam.odometry_node:main',

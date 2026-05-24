@@ -372,16 +372,7 @@ from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import Odometry, OccupancyGrid
 from geometry_msgs.msg import PoseStamped, TransformStamped
 from tf2_ros import StaticTransformBroadcaster
-from pathlib import Path
 
-def get_source_images_path():
-    current_file = Path(__file__).resolve()
-
-    for parent in current_file.parents:
-        if (parent / "package.xml").exists() and parent.name == "slam":
-            return str(parent / "images")
-
-    return str(Path.cwd() / "src" / "slam" / "images")
 
 class OccupancyGridMapper(Node):
     def __init__(self):
@@ -396,10 +387,8 @@ class OccupancyGridMapper(Node):
         self.declare_parameter('log_odds_min', -3.0)       # clamp inferior
         self.declare_parameter('log_odds_max', 18.0)       # clamp superior
         self.declare_parameter('map_publish_rate', 1.0)    # Hz
-        self.declare_parameter(
-            'save_path',
-            get_source_images_path()
-        )
+        self.declare_parameter('save_path', os.path.join(
+            os.path.expanduser('~'), 'SLAM', 'maps'))
 
         self.resolution = self.get_parameter('resolution').value
         map_w = self.get_parameter('map_width').value
@@ -688,11 +677,11 @@ class OccupancyGridMapper(Node):
                 fp.write(_chunk(b'IDAT', compressed))
                 fp.write(_chunk(b'IEND', b''))
 
-            print(f'🖼️  Mapa PNG guardado en {png_path}')
+            self.get_logger().info(f'🖼️  Mapa PNG guardado en {png_path}')
         except Exception as e:
-            print(f'No se pudo guardar PNG: {e}')
+            self.get_logger().warn(f'No se pudo guardar PNG: {e}')
 
-        print(f'💾 Mapa guardado en {self.save_path}/')
+        self.get_logger().info(f'💾 Mapa guardado en {self.save_path}/')
 
 # ─────────────────────────────────────────────────────────────────────
 #  main
@@ -707,21 +696,8 @@ def main(args=None):
         node.get_logger().info('Guardando mapa antes de cerrar... holiiis')
         node.save_map()
     finally:
-        try:
-            node.save_map()
-        except Exception as e:
-            print(f"Could not save map during shutdown: {e}")
-
-        try:
-            node.destroy_node()
-        except Exception:
-            pass
-
-        try:
-            if rclpy.ok():
-                rclpy.shutdown()
-        except Exception:
-            pass
+        node.destroy_node()
+        rclpy.shutdown()
 
 
 if __name__ == '__main__':

@@ -14,12 +14,12 @@ def generate_launch_description():
         output='screen'
     )
 
-    occupancy_grid_mapper_node = Node(
-        package='slam',
-        executable='occupancy_grid_mapper',
-        name='occupancy_grid_mapper',
-        output='screen'
-    )
+#    occupancy_grid_mapper_node = Node(
+#        package='slam',
+#        executable='occupancy_grid_mapper',
+#        name='occupancy_grid_mapper',
+#        output='screen'
+#    )
 
     mcl_node = Node(
         package='slam',
@@ -46,7 +46,7 @@ def generate_launch_description():
         SetEnvironmentVariable('ROS_LOCALHOST_ONLY', '0'),
 
         odometry_node,
-        occupancy_grid_mapper_node,
+#        occupancy_grid_mapper_node,
         mcl_node,
         rviz_node,
     ])

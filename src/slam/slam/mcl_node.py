@@ -20,6 +20,7 @@ Suscribe:
 import os
 import math
 from collections import deque
+from pathlib import Path
 
 import numpy as np
 import cv2
@@ -35,7 +36,7 @@ from rclpy.qos import (
 
 from nav_msgs.msg import Odometry, OccupancyGrid
 from sensor_msgs.msg import LaserScan
-from geometry_msgs.msg import PoseStamped, Quaternion, TransformStamped
+from geometry_msgs.msg import PoseStamped, PoseArray, Pose, Quaternion, TransformStamped, PoseWithCovarianceStamped
 from tf2_ros import TransformBroadcaster
 
 
@@ -56,6 +57,14 @@ def yaw_to_quaternion(yaw):
         w=math.cos(yaw / 2.0)
     )
 
+def get_source_images_path():
+    current_file = Path(__file__).resolve()
+
+    for parent in current_file.parents:
+        if (parent / "package.xml").exists() and parent.name == "slam":
+            return str(parent / "images")
+
+    return str(Path.cwd() / "src" / "slam" / "images")
 
 # ─────────────────────────────────────────────────────────────────────
 #  Nodo MCL
@@ -72,30 +81,28 @@ class MCLNode(Node):
         self.map_origin_x = -7.5  # origen del mapa en mundo (m)
         self.map_origin_y = -7.5
 
-        # Cargar mapa base
-        base_map_path = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)),
-            'mapabase.png'
-        )
-
-        base_img = cv2.imread(base_map_path, cv2.IMREAD_GRAYSCALE)
-
-        if base_img is not None:
-            self.map_img = base_img
-            self.get_logger().info(
-                f'📍 Mapa base cargado: {base_img.shape} desde {base_map_path}')
-        else:
-            # Sin mapa base: crear un mapa vacío (todo gris = desconocido)
-            self.get_logger().warn(
-                f'⚠️  No se encontró mapa base en {base_map_path}. '
-                f'Iniciando con mapa vacío — esperando /map...')
-            self.map_img = np.full((300, 300), 128, dtype=np.uint8)
-
+        # ── MAPA DESDE CERO ──
+        # Crear un mapa vacío (todo gris = desconocido)
+        self.map_img = np.full((300, 300), 128, dtype=np.uint8)
         self.map_h, self.map_w = self.map_img.shape
+
+        self.get_logger().info(
+            f'📍 Iniciando SLAM desde cero con mapa vacío de {self.map_w}x{self.map_h} celdas')
+
+        # Log-odds grid para mapeo interno (estilo CoreSLAM)
+        # 0 = desconocido
+        self.log_odds = np.zeros((self.map_h, self.map_w), dtype=np.int16)
+
+        self.log_occ_hit  = 15    # incremento al marcar ocupada
+        self.log_occ_miss = -5    # incremento al marcar libre
+        self.log_occ_max  = 100
+        self.log_occ_min  = -100
 
         # Calcular Likelihood Field del mapa base
         self.likelihood_field = self._compute_likelihood_field(self.map_img)
-        self.map_ready = base_img is not None
+        self.map_ready = True  # Siempre listo, empiece de cero o con base
+        self.lf_update_counter = 0
+        self.lf_update_interval = 5  # recalcular likelihood field cada N scans
 
         # =====================================================
         # PARÁMETROS DEL FILTRO DE PARTÍCULAS
@@ -108,15 +115,15 @@ class MCLNode(Node):
         self.log_field_floor = -10.0
 
         # Qué tanto confiar en odometría como prior
-        self.odom_sigma_xy = 0.45
-        self.odom_sigma_theta = 0.6
+        self.odom_sigma_xy = 1.0
+        self.odom_sigma_theta = 0.8
 
-        self.lidar_yaw_offset = 0.0  
+        self.lidar_yaw_offset = math.pi  # LiDAR montado al revés (180°)
         self.exploration_ratio = 0.10
 
         # Suavizado temporal de la estimación
         self.filtered_estimate = None
-        self.smooth_alpha = 0.8
+        self.smooth_alpha = 0.3
 
         self.estimate_trail = deque(maxlen=80)
         self.mcl_estimate = None
@@ -138,23 +145,32 @@ class MCLNode(Node):
         self.scan_sub = self.create_subscription(
             LaserScan, '/scan', self.scan_callback, qos_profile_sensor_data)
 
-        # /map con QoS TRANSIENT_LOCAL (para recibir el último mapa publicado)
-        qos_map = QoSProfile(depth=1)
-        qos_map.durability = QoSDurabilityPolicy.TRANSIENT_LOCAL
-        qos_map.reliability = QoSReliabilityPolicy.RELIABLE
+        self.initial_pose_sub = self.create_subscription(
+            PoseWithCovarianceStamped, '/initialpose', self.initial_pose_callback, 10)
 
-        self.map_sub = self.create_subscription(
-            OccupancyGrid, '/map', self.map_callback, qos_map)
+        # NOTA: Ya no nos suscribimos a /map porque este nodo hace su propio mapa.
 
         # =====================================================
         # PUBLICADORES ROS2
         # =====================================================
 
         self.pose_pub = self.create_publisher(PoseStamped, '/mcl_pose', 10)
+        self.particles_pub = self.create_publisher(PoseArray, '/slam/particles', 10)
+
+        # Publicador del mapa interno (SLAM)
+        qos_slam_map = QoSProfile(depth=1)
+        qos_slam_map.durability = QoSDurabilityPolicy.TRANSIENT_LOCAL
+        qos_slam_map.reliability = QoSReliabilityPolicy.RELIABLE
+        self.slam_map_pub = self.create_publisher(
+            OccupancyGrid, '/map', qos_slam_map)
+
         self.tf_br = TransformBroadcaster(self)
 
+        # Timer para publicar mapa SLAM cada 2 segundos
+        self.create_timer(2.0, self.publish_slam_map)
+
         self.get_logger().info(
-            '🎯 MCL Node iniciado — esperando /odom, /scan y /map...')
+            '🎯 MCL+SLAM Node iniciado — esperando /odom y /scan...')
 
     # =====================================================
     # LIKELIHOOD FIELD
@@ -180,47 +196,7 @@ class MCLNode(Node):
 
         return likelihood
 
-    # =====================================================
-    # CALLBACK DE /map (actualización dinámica)
-    # =====================================================
 
-    def map_callback(self, msg):
-        """Recibe el OccupancyGrid en vivo y actualiza el likelihood field."""
-        w = msg.info.width
-        h = msg.info.height
-        res = msg.info.resolution
-
-        # Convertir OccupancyGrid → imagen grayscale
-        #   -1 (desconocido) → 128 (gris)
-        #    0 (libre)        → 255 (blanco)
-        #  100 (ocupado)      → 0   (negro)
-        data = np.array(msg.data, dtype=np.int8).reshape((h, w))
-        gray = np.full((h, w), 128, dtype=np.uint8)
-        gray[data == 0] = 255    # libre
-        gray[data == 100] = 0    # ocupado
-
-        # Mezclar con mapa base si tienen las mismas dimensiones
-        if self.map_img.shape == gray.shape:
-            # Donde el mapa en vivo tiene información (no desconocido),
-            # usar esa información. Donde es desconocido, mantener el mapa base.
-            known_mask = (data != -1)
-            merged = self.map_img.copy()
-            merged[known_mask] = gray[known_mask]
-            self.map_img = merged
-        else:
-            # Dimensiones diferentes: usar el mapa en vivo directamente
-            self.map_img = gray
-            self.map_h, self.map_w = h, w
-
-        # Actualizar metadatos
-        self.resolution = res
-        self.map_origin_x = msg.info.origin.position.x
-        self.map_origin_y = msg.info.origin.position.y
-        self.map_h, self.map_w = self.map_img.shape
-
-        # Recalcular likelihood field
-        self.likelihood_field = self._compute_likelihood_field(self.map_img)
-        self.map_ready = True
 
     # =====================================================
     # CONVERSIONES MAPA <-> MUNDO
@@ -233,7 +209,7 @@ class MCLNode(Node):
         return px, py
 
     def pixel_to_world(self, px, py):
-        """Convierte pixeles del mapa a coordenadas del mundo (flip Y inverso)."""
+        """Convierte pixeles del mapa a coordenadas del mundo."""
         x = px * self.resolution + self.map_origin_x
         y = py * self.resolution + self.map_origin_y
         return x, y
@@ -243,7 +219,7 @@ class MCLNode(Node):
         px, py = self.world_to_pixel(x, y)
         if px < 0 or px >= self.map_w or py < 0 or py >= self.map_h:
             return False
-        return self.map_img[py, px] > 200
+        return self.map_img[py, px] > 50  # Libre o desconocido
 
     # =====================================================
     # INICIALIZACIÓN DE PARTÍCULAS
@@ -271,8 +247,25 @@ class MCLNode(Node):
         self.mcl_estimate = (x, y, theta)
 
         self.get_logger().info(
-            f'Partículas inicializadas alrededor de odom: '
+            f'Partículas inicializadas en: '
             f'x={x:.2f}, y={y:.2f}, θ={theta:.2f}')
+
+    def initial_pose_callback(self, msg):
+        """Recibe una pose inicial manual desde RViz (2D Pose Estimate)."""
+        x = msg.pose.pose.position.x
+        y = msg.pose.pose.position.y
+        q = msg.pose.pose.orientation
+        theta = euler_from_quaternion(q.x, q.y, q.z, q.w)
+
+        self.get_logger().info(
+            f'📍 Pose inicial manual recibida desde RViz: x={x:.2f}, y={y:.2f}, θ={theta:.2f}')
+
+        # Re-inicializar partículas en esta nueva posición
+        self.init_particles_around_pose(x, y, theta)
+
+        # Actualizar la odometría previa para no dar saltos bruscos
+        if self.current_robot_pose is not None:
+            self.prev_odom = self.current_robot_pose.copy()
 
     # =====================================================
     # ODOMETRÍA — MODELO DE MOVIMIENTO
@@ -407,20 +400,7 @@ class MCLNode(Node):
                 else:
                     log_prob += log_floor
 
-            # Prior de odometría
-            if self.current_robot_pose is not None:
-                rx, ry, rt = self.current_robot_pose
-                dist_xy = math.hypot(x - rx, y - ry)
-                dtheta_odom = math.atan2(
-                    math.sin(theta - rt), math.cos(theta - rt))
-
-                odom_prior = (
-                    -0.5 * (dist_xy / self.odom_sigma_xy) ** 2
-                    - 0.5 * (dtheta_odom / self.odom_sigma_theta) ** 2
-                )
-                log_scores[i] = log_prob + odom_prior
-            else:
-                log_scores[i] = log_prob
+            log_scores[i] = log_prob
 
         # Convertir log-scores a pesos normalizados
         max_log = np.max(log_scores)
@@ -435,8 +415,20 @@ class MCLNode(Node):
         self.particles[:, 3] = scores
 
         self.compute_estimate()
-        self.resample_particles()
+
+        # Resampling condicional: solo si las partículas degeneran
+        n_eff = 1.0 / (np.sum(scores ** 2) + 1e-10)
+        if n_eff < self.num_particles / 2:
+            self.resample_particles()
+
+        # Actualizar mapa interno con la mejor partícula
+        best_idx = int(np.argmax(self.particles[:, 3]))
+        best = self.particles[best_idx]
+        self.update_map_with_scan(best[0], best[1], best[2],
+                                  ranges, angles, msg)
+
         self.publish_pose()
+        self.publish_particles()
         self.visualize()
 
     # =====================================================
@@ -445,16 +437,7 @@ class MCLNode(Node):
 
     def compute_estimate(self):
         """Promedio ponderado de partículas con suavizado temporal."""
-        if self.current_robot_pose is not None:
-            rx, ry, _ = self.current_robot_pose
-            distances = np.sqrt(
-                (self.particles[:, 0] - rx) ** 2 +
-                (self.particles[:, 1] - ry) ** 2
-            )
-            nearby = np.where(distances < 1.5)[0]
-            selected = self.particles[nearby] if len(nearby) > 0 else self.particles
-        else:
-            selected = self.particles
+        selected = self.particles
 
         weights = selected[:, 3].copy()
         w_sum = np.sum(weights)
@@ -607,6 +590,127 @@ class MCLNode(Node):
         self.particles = new_particles
 
     # =====================================================
+    # MAPEO INTERNO (SLAM) Y PUBLICADORES EXTRA
+    # =====================================================
+
+    def _bresenham(self, x0, y0, x1, y1):
+        """Bresenham para trazar rayos en la cuadrícula."""
+        cells = []
+        dx, dy = abs(x1 - x0), abs(y1 - y0)
+        sx = 1 if x0 < x1 else -1
+        sy = 1 if y0 < y1 else -1
+        err = dx - dy
+        x, y = x0, y0
+        while True:
+            cells.append((x, y))
+            if x == x1 and y == y1:
+                break
+            e2 = 2 * err
+            if e2 > -dy:
+                err -= dy
+                x += sx
+            if e2 < dx:
+                err += dx
+                y += sy
+        return cells
+
+    def update_map_with_scan(self, rx, ry, rtheta, ranges, angles, msg):
+        """Actualiza el mapa interno log-odds usando la mejor partícula."""
+        crx, cry = self.world_to_pixel(rx, ry)
+
+        for i in range(len(ranges)):
+            r = ranges[i]
+            if r < msg.range_min or r > msg.range_max - 0.1 or np.isinf(r) or np.isnan(r):
+                continue
+
+            angle = rtheta + angles[i] + self.lidar_yaw_offset
+            hit_x = rx + r * math.cos(angle)
+            hit_y = ry + r * math.sin(angle)
+            chx, chy = self.world_to_pixel(hit_x, hit_y)
+
+            cells_on_ray = self._bresenham(crx, cry, chx, chy)
+
+            # Celdas previas al impacto -> libre
+            for (cx, cy) in cells_on_ray[:-1]:
+                if 0 <= cx < self.map_w and 0 <= cy < self.map_h:
+                    self.log_odds[cy, cx] = max(
+                        self.log_odds[cy, cx] + self.log_occ_miss, self.log_occ_min)
+
+            # Celda de impacto -> ocupada
+            if 0 <= chx < self.map_w and 0 <= chy < self.map_h:
+                self.log_odds[chy, chx] = min(
+                    self.log_odds[chy, chx] + self.log_occ_hit, self.log_occ_max)
+
+        # Actualizar map_img basado en log_odds
+        known = self.log_odds != 0
+        prob = 1.0 / (1.0 + np.exp(-self.log_odds[known].astype(np.float32) / 10.0))
+        self.map_img[known] = ((1.0 - prob) * 255).astype(np.uint8)
+
+        # ── CERRAR HUECOS ENTRE ESTANTES (Morphological Closing) ──
+        # Identificar obstáculos (pixeles negros, valor < 50)
+        obstacle_mask = (self.map_img < 50).astype(np.uint8) * 255
+        # Kernel de 5x5 celdas (aprox 25x25 cm)
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+        closed_obstacles = cv2.morphologyEx(obstacle_mask, cv2.MORPH_CLOSE, kernel)
+        # Pintar los huecos cerrados como obstáculos en la imagen del mapa
+        self.map_img[closed_obstacles == 255] = 0
+
+        # Recalcular Likelihood Field periódicamente
+        self.lf_update_counter += 1
+        if self.lf_update_counter >= self.lf_update_interval:
+            self.likelihood_field = self._compute_likelihood_field(self.map_img)
+            self.lf_update_counter = 0
+
+    def publish_particles(self):
+        """Publica las partículas como PoseArray para RViz."""
+        msg = PoseArray()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.header.frame_id = 'map'
+        for p in self.particles:
+            pose = Pose()
+            pose.position.x = float(p[0])
+            pose.position.y = float(p[1])
+            pose.orientation = yaw_to_quaternion(float(p[2]))
+            msg.poses.append(pose)
+        self.particles_pub.publish(msg)
+
+    def publish_slam_map(self):
+        """Publica el mapa log-odds como OccupancyGrid."""
+        msg = OccupancyGrid()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.header.frame_id = 'map'
+        msg.info.resolution = float(self.resolution)
+        msg.info.width = int(self.map_w)
+        msg.info.height = int(self.map_h)
+        msg.info.origin.position.x = float(self.map_origin_x)
+        msg.info.origin.position.y = float(self.map_origin_y)
+        msg.info.origin.orientation.w = 1.0
+
+        data = np.full((self.map_h, self.map_w), -1, dtype=np.int8)
+        known = self.log_odds != 0
+        prob = 1.0 / (1.0 + np.exp(-self.log_odds[known].astype(np.float32) / 10.0))
+        data[known] = (prob * 100).astype(np.int8)
+        
+        # ── CERRAR HUECOS ENTRE ESTANTES PARA RVIZ ──
+        rviz_obs_mask = (data >= 50).astype(np.uint8) * 255
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+        closed_rviz_obs = cv2.morphologyEx(rviz_obs_mask, cv2.MORPH_CLOSE, kernel)
+        data[closed_rviz_obs == 255] = 100
+
+        msg.data = data.flatten().tolist()
+        self.slam_map_pub.publish(msg)
+
+    def save_map(self):
+        """Guarda el mapa interno generado como un archivo PNG."""
+        save_dir = get_source_images_path()
+        os.makedirs(save_dir, exist_ok=True)
+
+        save_path = os.path.join(save_dir, 'map.png')
+        cv2.imwrite(save_path, self.map_img)
+
+        print(f'✅ Mapa guardado exitosamente en: {save_path}')
+
+    # =====================================================
     # VISUALIZACIÓN
     # =====================================================
 
@@ -676,7 +780,8 @@ def main(args=None):
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
-        node.get_logger().info('Cerrando MCL node...')
+        print('Cerrando MCL node...')
+        node.save_map()
     finally:
         try:
             node.destroy_node()
