@@ -12,7 +12,7 @@ def generate_launch_description():
     # -----------------------------------------------------------------------------
     
     # Name of the Gazebo world to load
-    world = 'obstacle_avoidance_4.world'
+    world = 'obstacle_avoidance_1.world'
 
     # General Gazebo settings
     pause = 'false'           # Start Gazebo in paused state
@@ -24,7 +24,7 @@ def generate_launch_description():
         {
             'name': '',
             'type': 'puzzlebot_jetson_lidar_ed',
-            'x': 0.0, 'y': 0.0, 'yaw': 0.0,
+            'x': -2.8, 'y': -1.2, 'yaw': 0.0,
             'lidar_frame': 'laser_frame',
             'camera_frame': 'camera_link_optical',
             'tof_frame': 'tof_link'

@@ -21,9 +21,9 @@ KP_WALL = 1.5
 DEFAULT_GOAL_TOL = 0.15
 PATH_POINT_TOL = 0.12
 
-OBS_THRESHOLD = 0.40
+OBS_THRESHOLD = 0.5
 OBS_EXIT_THRESHOLD = 0.85
-WALL_DIST = 0.5
+WALL_DIST = 0.65
 FORWARD_HALF = 30
 HEADING_TOL = 45
 
@@ -87,6 +87,7 @@ class HybridAStarBug0Node(Node):
         self._state = 'FOLLOW_PATH'
         self._wall_entry_pos = None
         self._corner_entry_pos = None
+        self._bug0_side = None
 
         self.create_timer(0.05, self._loop)
 
@@ -124,6 +125,7 @@ class HybridAStarBug0Node(Node):
             self.path = []
             self.path_idx = 0
             self._state = 'FOLLOW_PATH'
+            self._bug0_side = None
             self._cmd(0.0, 0.0)
             return
 
@@ -142,6 +144,7 @@ class HybridAStarBug0Node(Node):
                 self._state = 'BUG0_AVOID'
                 self._wall_entry_pos = (self.x, self.y)
                 self._corner_entry_pos = None
+                self._bug0_side = self._choose_bug0_side()
                 return
 
             self._follow_astar_path()
@@ -152,6 +155,7 @@ class HybridAStarBug0Node(Node):
                 self._state = 'FOLLOW_PATH'
                 self._wall_entry_pos = None
                 self._corner_entry_pos = None
+                self._bug0_side = None
                 return
 
             if self._distance_from_current_path_point() > REPLAN_DISTANCE:
@@ -205,12 +209,54 @@ class HybridAStarBug0Node(Node):
             and heading_err < math.radians(HEADING_TOL)
             and wall_traveled > WALL_FOLLOW_MIN_DIST
         )
+    
+    def _choose_bug0_side(self):
+        left = self._min_range(25, 115)
+        front_left = self._min_range(10, 60)
+
+        right = self._min_range(-115, -25)
+        front_right = self._min_range(-60, -10)
+
+        max_range = self._scan.range_max if self._scan is not None else 10.0
+
+        left = max_range if math.isinf(left) else left
+        front_left = max_range if math.isinf(front_left) else front_left
+        right = max_range if math.isinf(right) else right
+        front_right = max_range if math.isinf(front_right) else front_right
+
+        left_score = 0.6 * left + 0.4 * front_left
+        right_score = 0.6 * right + 0.4 * front_right
+
+        side = 'right' if left_score > right_score else 'left'
+        
+        self.get_logger().info(
+            f'Bug0 side selected: {side} '
+            f'(left_score={left_score:.2f}, right_score={right_score:.2f})'
+        )
+
+        return side
 
     def _bug0_follow_wall(self, front: float):
-        right = self._min_range(-135, -50)
-        front_right = self._min_range(-60, -30)
-        err = right - WALL_DIST
-        outer_corner = right > WALL_DIST * 2.5
+        front_wide = self._min_range(-45, 45)
+
+        if self._bug0_side == 'left':
+            side_range = self._min_range(50, 135)
+            front_side = self._min_range(30, 60)
+
+            turn_away = -MAX_ANG
+            turn_toward = MAX_ANG
+            wall_correction_sign = 1.0
+
+        else:
+            side_range = self._min_range(-135, -50)
+            front_side = self._min_range(-60, -30)
+
+            turn_away = MAX_ANG
+            turn_toward = -MAX_ANG
+            wall_correction_sign = -1.0
+
+        err = side_range - WALL_DIST
+        outer_corner = side_range > WALL_DIST * 2.5
 
         if outer_corner:
             if self._corner_entry_pos is None:
@@ -224,19 +270,31 @@ class HybridAStarBug0Node(Node):
             self._corner_entry_pos = None
             corner_cleared = True
 
-        if front < OBS_THRESHOLD:
-            self._cmd(0.0, MAX_ANG)
-        elif not outer_corner and front_right < OBS_THRESHOLD:
-            self._cmd(0.0, MAX_ANG)
+        if front_wide < WALL_DIST:
+            self._cmd(-MAX_LIN * 0.10, turn_away)
+
+        elif front_wide < OBS_THRESHOLD:
+            self._cmd(MAX_LIN * 0.10, turn_away)
+
+        elif not outer_corner and front_side < OBS_THRESHOLD:
+            self._cmd(MAX_LIN * 0.10, turn_away)
+
         elif outer_corner:
             if not corner_cleared:
                 self._cmd(MAX_LIN * 0.5, 0.0)
-            elif front_right < OBS_THRESHOLD:
+
+            elif front_side < OBS_THRESHOLD:
                 self._cmd(MAX_LIN * 0.5, 0.0)
+
             else:
-                self._cmd(MAX_LIN * 0.5, -MAX_ANG * 0.5)
+                self._cmd(MAX_LIN * 0.5, turn_toward * 0.5)
+
         else:
-            angular = _clamp(-KP_WALL * err, -MAX_ANG, MAX_ANG)
+            angular = _clamp(
+                wall_correction_sign * KP_WALL * err,
+                -MAX_ANG,
+                MAX_ANG
+            )
             self._cmd(MAX_LIN * 0.8, angular)
 
     def _distance_from_current_path_point(self):

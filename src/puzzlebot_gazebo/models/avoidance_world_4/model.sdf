@@ -396,7 +396,7 @@
     
     <!-- Unknown obstacle for hybrid A* + Bug0 testing -->
     <link name='Unknown_Box_01'>
-      <pose>-1.5 -1.65 0 0 0 0</pose>
+      <pose>-1.5 -1.65 0.25 0 0 0</pose>
 
       <visual name='Unknown_Box_01_Visual'>
         <geometry>
