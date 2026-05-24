@@ -93,8 +93,8 @@ class MCLNode(Node):
         # 0 = desconocido
         self.log_odds = np.zeros((self.map_h, self.map_w), dtype=np.int16)
 
-        self.log_occ_hit  = 15    # incremento al marcar ocupada
-        self.log_occ_miss = -5    # incremento al marcar libre
+        self.log_occ_hit  = 20    # incremento al marcar ocupada
+        self.log_occ_miss = -2    # incremento al marcar libre
         self.log_occ_max  = 100
         self.log_occ_min  = -100
 
@@ -102,7 +102,7 @@ class MCLNode(Node):
         self.likelihood_field = self._compute_likelihood_field(self.map_img)
         self.map_ready = True  # Siempre listo, empiece de cero o con base
         self.lf_update_counter = 0
-        self.lf_update_interval = 5  # recalcular likelihood field cada N scans
+        self.lf_update_interval = 15  # recalcular likelihood field cada N scans
 
         # =====================================================
         # PARÁMETROS DEL FILTRO DE PARTÍCULAS
@@ -648,12 +648,12 @@ class MCLNode(Node):
 
         # ── CERRAR HUECOS ENTRE ESTANTES (Morphological Closing) ──
         # Identificar obstáculos (pixeles negros, valor < 50)
-        obstacle_mask = (self.map_img < 50).astype(np.uint8) * 255
+        #obstacle_mask = (self.map_img < 50).astype(np.uint8) * 255
         # Kernel de 5x5 celdas (aprox 25x25 cm)
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
-        closed_obstacles = cv2.morphologyEx(obstacle_mask, cv2.MORPH_CLOSE, kernel)
+        #kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 1))
+        #closed_obstacles = cv2.morphologyEx(obstacle_mask, cv2.MORPH_CLOSE, kernel)
         # Pintar los huecos cerrados como obstáculos en la imagen del mapa
-        self.map_img[closed_obstacles == 255] = 0
+        #self.map_img[closed_obstacles == 255] = 0
 
         # Recalcular Likelihood Field periódicamente
         self.lf_update_counter += 1
@@ -715,7 +715,6 @@ class MCLNode(Node):
     # =====================================================
 
     def visualize(self):
-        return
         """Dibuja mapa, partículas, estimación MCL y odometría."""
         if not self.display_available:
             return
