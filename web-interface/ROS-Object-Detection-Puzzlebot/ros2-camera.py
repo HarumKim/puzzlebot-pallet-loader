@@ -11,7 +11,7 @@ _DIR = os.path.dirname(os.path.abspath(__file__))
 
 # ── TEST MODE ──────────────────────────────────────────────────────────────
 # True to use test images instead of camera input.
-TEST_MODE = True                 # <-- pon False para modo normal
+TEST_MODE = False             # <-- pon False para modo normal
 TEST_IMAGE_PATH = os.path.join(_DIR, 'apples.jpg')
 TEST_MAP_IMAGE_PATH = os.path.join(_DIR, 'mapa.png')
 # ──────────────────────────────────────────────────────────────────────────
