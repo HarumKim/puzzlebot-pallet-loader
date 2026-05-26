@@ -7,8 +7,9 @@ import threading
 
 import rclpy
 from rclpy.node import Node
-from sensor_msgs.msg import Image
+from sensor_msgs.msg import Image, CompressedImage
 from std_msgs.msg import String
+from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 from cv_bridge import CvBridge
 import cv2
 
@@ -18,29 +19,40 @@ latest_frame = None
 latest_map_frame = None
 latest_voice_status = '---'
 ros_node = None  # referencia global para publicar desde las rutas Flask
+_frame_event = threading.Event()
+_map_event = threading.Event()
 
 class ImageSubscriber(Node):
     def __init__(self):
         super().__init__('flask_web_subscriber')
         self.bridge = CvBridge()
-        self.create_subscription(Image, '/image_result', self.camera_callback, 10)
+
+        # QoS: best-effort, cola de 1 → siempre el frame más reciente, sin backlog
+        cam_qos = QoSProfile(
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1,
+        )
+
+        self.create_subscription(CompressedImage, '/camera/image_raw/compressed',
+                                 self.camera_callback, cam_qos)
         self.create_subscription(Image, '/localization', self.map_callback, 10)
         self.create_subscription(String, '/voice/status', self.voice_callback, 10)
         self.voice_pub = self.create_publisher(String, '/voice/command', 10)
 
     def camera_callback(self, data):
         global latest_frame
-        cv_image = self.bridge.imgmsg_to_cv2(data, desired_encoding="passthrough")
-        ret, buffer = cv2.imencode('.jpg', cv_image)
-        if ret:
-            latest_frame = buffer.tobytes()
+        # data.data ya son bytes JPEG — no hay que re-codificar
+        latest_frame = bytes(data.data)
+        _frame_event.set()
 
     def map_callback(self, data):
         global latest_map_frame
         cv_image = self.bridge.imgmsg_to_cv2(data, desired_encoding="passthrough")
-        ret, buffer = cv2.imencode('.jpg', cv_image)
+        ret, buffer = cv2.imencode('.jpg', cv_image, [cv2.IMWRITE_JPEG_QUALITY, 60])
         if ret:
             latest_map_frame = buffer.tobytes()
+            _map_event.set()
 
     def voice_callback(self, data):
         global latest_voice_status
@@ -82,17 +94,21 @@ def ros2_thread():
 
 def gen_frames():
     while True:
-        if latest_frame is not None:
+        _frame_event.wait()
+        _frame_event.clear()
+        frame = latest_frame
+        if frame is not None:
             yield (b'--frame\r\n'
-                   b'Content-Type: image/jpeg\r\n\r\n' + latest_frame + b'\r\n')
-        time.sleep(0.03)
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
 
 def gen_map_frames():
     while True:
-        if latest_map_frame is not None:
+        _map_event.wait()
+        _map_event.clear()
+        frame = latest_map_frame
+        if frame is not None:
             yield (b'--frame\r\n'
-                   b'Content-Type: image/jpeg\r\n\r\n' + latest_map_frame + b'\r\n')
-        time.sleep(0.03)
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
 
 if __name__ == '__main__':
     call_api()  # Llamada inicial
