@@ -10,6 +10,8 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
+        ('share/' + package_name, ['best.pt']),
+        ('share/' + package_name + '/launch', ['launch/perception.launch.py']),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -26,6 +28,7 @@ setup(
         'console_scripts': [
             'camera_publisher = puzzlebot_pallet_loader.camera_publisher:main',
             'voice_recognition = puzzlebot_pallet_loader.voice_recognition:main',
+            'detector_node = puzzlebot_pallet_loader.detector_node:main',
         ],
     },
 )

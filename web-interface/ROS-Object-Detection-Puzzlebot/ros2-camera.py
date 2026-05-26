@@ -26,7 +26,7 @@ class CameraNode(Node):
         self.timer = self.create_timer(0.033, self.timer_callback)  # ~30 Hz
 
         self.latest_frame = None
-        self.create_subscription(CompressedImage, '/camera/image_raw/compressed', self.image_callback, 10)
+        self.create_subscription(CompressedImage, '/detection/annotated/compressed', self.image_callback, 10)
 
         # ── TEST MODE: Cargar imágenes de prueba ──────────────────────────────
         test_raw = cv2.imread(TEST_IMAGE_PATH)
