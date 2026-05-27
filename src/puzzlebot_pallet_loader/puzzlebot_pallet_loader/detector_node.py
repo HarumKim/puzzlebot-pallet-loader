@@ -1,8 +1,10 @@
 import cv2
+import json
 import numpy as np
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import CompressedImage
+from std_msgs.msg import String
 from ament_index_python.packages import get_package_share_directory
 from ultralytics import YOLO
 import os
@@ -24,6 +26,8 @@ class DetectorNode(Node):
 
         self._pub_annotated = self.create_publisher(
             CompressedImage, '/detection/annotated/compressed', 10)
+        self._pub_detections = self.create_publisher(
+            String, '/detections', 10)
 
     def _image_callback(self, msg: CompressedImage):
         np_arr = np.frombuffer(msg.data, np.uint8)
@@ -41,6 +45,18 @@ class DetectorNode(Node):
             out.format = 'jpeg'
             out.data = buf.tobytes()
             self._pub_annotated.publish(out)
+
+        detections = []
+        for box in results.boxes:
+            cls_id = int(box.cls[0])
+            detections.append({
+                'class': self._model.names[cls_id],
+                'confidence': round(float(box.conf[0]), 3),
+                'bbox': [round(float(v), 1) for v in box.xyxy[0].tolist()],
+            })
+        det_msg = String()
+        det_msg.data = json.dumps({'detections': detections, 'count': len(detections)})
+        self._pub_detections.publish(det_msg)
 
         # --- ArUco (placeholder para más adelante) ---
         # aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)

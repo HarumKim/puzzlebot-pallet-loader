@@ -24,11 +24,5 @@ def generate_launch_description():
         output='screen',
     )
 
-    detector = Node(
-        package='puzzlebot_pallet_loader',
-        executable='detector_node',
-        name='detector_node',
-        output='screen',
-    )
-
-    return LaunchDescription([udp_host_arg, camera, detector])
+    # detector_node corre en la PC, no en la Jetson
+    return LaunchDescription([udp_host_arg, camera])

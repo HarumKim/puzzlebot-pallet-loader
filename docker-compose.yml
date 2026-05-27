@@ -1,16 +1,13 @@
 # =============================================================================
 # Puzzlebot Pallet Loader — Docker Compose
 # =============================================================================
-# Antes de levantar los servicios que usen ventana gráfica (ros-camera):
-#   xhost +local:root
-#
-# Levantar todo:
+# Levantar:
 #   docker compose up
 #
-# Apagar todo:
+# Apagar:
 #   docker compose down
 #
-# Ver logs de un servicio específico:
+# Ver logs:
 #   docker compose logs -f flask-web
 # =============================================================================
 
@@ -18,9 +15,9 @@ x-python: &python /home/robotics/miniconda3/envs/te300xb/bin/python  # Python de
 
 x-base: &base                             # bloque reutilizable con config común
   image: arturocerontec/robotics:oslm3
-  network_mode: host                      # todos comparten la red del host → ROS2 DDS funciona entre servicios
-  privileged: true                        # acceso a hardware (cámara CSI, FPGA, GPU)
-  ipc: host                               # memoria compartida entre contenedores (requerido por ROS2)
+  network_mode: host                      # comparte la red del host → ROS2 DDS funciona
+  privileged: true                        # acceso a hardware
+  ipc: host                               # memoria compartida (requerido por ROS2)
   environment:
     - USER=robotics
     - PASSWD=robotics
@@ -36,44 +33,9 @@ x-base: &base                             # bloque reutilizable con config comú
 
 services:
 
-  # ── Servicio 1: Gateway REST (Go) ──────────────────────────────────────────
-  # Convierte llamadas gRPC en una REST API accesible por HTTP en el puerto 8042.
-  # Flask llama a este servicio para obtener las coordenadas X,Y del robot.
-  go-gateway:
-    <<: *base
-    container_name: te3003b-gateway
-    working_dir: /home/robotics/puzzlebot-pallet-loader/web-interface/GO-REST-Gateway-Linux
-    command: ./gateway-app
-    restart: unless-stopped
-
-  # ── Servicio 2: Wrapper gRPC (Python) ──────────────────────────────────────
-  # Lee los topics de ROS2 y los expone como servidor gRPC para el gateway de Go.
-  grpc-wrapper:
-    <<: *base
-    container_name: te3003b-wrapper
-    working_dir: /home/robotics/puzzlebot-pallet-loader/web-interface/PY-RPC-Wrapper-Server-Linux
-    command: >
-      bash -c "source /home/robotics/puzzlebot-pallet-loader/install/setup.bash &&
-               /home/robotics/miniconda3/envs/te300xb/bin/python ros2-grpc-wrapper.py"
-    depends_on:
-      - go-gateway
-    restart: unless-stopped
-
-  # ── Servicio 3: Nodo de cámara ROS2 ────────────────────────────────────────
-  # Recibe imágenes de /camera/image_raw y las publica en /image_result
-  # para que Flask las transmita al navegador.
-  ros-camera:
-    <<: *base
-    container_name: te3003b-ros
-    working_dir: /home/robotics/puzzlebot-pallet-loader/web-interface/ROS-Object-Detection-Puzzlebot
-    command: >
-      bash -c "source /home/robotics/puzzlebot-pallet-loader/install/setup.bash &&
-               /home/robotics/miniconda3/envs/te300xb/bin/python ros2-camera.py"
-    restart: unless-stopped
-
-  # ── Servicio 4: Servidor web Flask ─────────────────────────────────────────
-  # Sirve la interfaz web en http://<IP-Jetson>:8002
-  # Recibe imágenes de ROS2 y las transmite al navegador en tiempo real.
+  # ── Servidor web Flask ─────────────────────────────────────────────────────
+  # Sirve la interfaz web en http://<IP-PC>:8002
+  # Suscribe directamente los tópicos ROS 2: imagen anotada, mapa, detecciones.
   flask-web:
     <<: *base
     container_name: te3003b-flask
@@ -81,8 +43,4 @@ services:
     command: >
       bash -c "source /home/robotics/puzzlebot-pallet-loader/install/setup.bash &&
                /home/robotics/miniconda3/envs/te300xb/bin/python app.py"
-    depends_on:
-      - go-gateway
-      - grpc-wrapper
-      - ros-camera
     restart: unless-stopped

@@ -12,7 +12,7 @@ from sensor_msgs.msg import CompressedImage
 """
 sudo apt install gstreamer1.0-plugins-bad
 
--- TERMINAL 1 --
+-- TERMINAL 1 -- YA NO ES NECESARIO, SE VE EN LA INTERFAZ WEB!!
 gst-launch-1.0 udpsrc port=5004 ! tsdemux ! h264parse ! decodebin ! queue ! autovideosink sync=false
 
 -- TERMINAL 2 -- SE CORRE DENTRO DE LA JETSON!!
