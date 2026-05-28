@@ -1,0 +1,53 @@
+# =============================================================================
+# ekf_aruco_params.yaml
+#
+# Parámetros para el stack de localización ArUco-EKF del proyecto final.
+# Combina los parámetros del EKF y el mapa de landmarks en un solo archivo.
+#
+# Uso en el launch file:
+#   parameters=[ekf_aruco_params]
+# =============================================================================
+
+# ── EKF Localization Node ─────────────────────────────────────────────────────
+ekf_aruco_localization_node:
+  ros__parameters:
+
+    # Robot
+    wheel_radius: 0.05        # m
+    wheel_base: 0.19          # m (distancia entre ruedas)
+    dt: 0.05                  # s (periodo del timer de predicción)
+
+    # Ruido de proceso Q — qué tanto desconfiamos de los encoders
+    q_x: 0.01                 # m²
+    q_y: 0.01                 # m²
+    q_theta: 0.005            # rad²
+
+    # Ruido de medición R — qué tanto desconfiamos de la cámara/ArUco
+    r_range: 0.05             # m²
+    r_bearing: 0.05           # rad²
+
+    # Umbral de Mahalanobis — chi² al 95% con 2 DOF
+    mahalanobis_threshold: 5.991
+
+    # Topics
+    ekf_odom_topic: "/odom"              # el navegador ya lee /odom
+    aruco_topic: "/aruco_measurements"
+
+    # Frames TF
+    odom_frame: "odom"
+    base_frame: "base_link"
+    laser_frame: "laser"
+
+    # Mapa de landmarks ArUco (posiciones en frame world/odom)
+    # Pista: x=[0, 4.84], y=[0, 3.67] — marcadores en las 4 esquinas interiores
+    marker_ids:   [0,     1,     2,     3   ]
+    marker_x:     [4.20,  4.20,  0.60,  0.60]
+    marker_y:     [0.60,  3.10,  3.10,  0.60]
+
+# ── ArUco Detector Node ───────────────────────────────────────────────────────
+aruco_detector_node:
+  ros__parameters:
+    aruco_dictionary: 0       # cv2.aruco.DICT_4X4_50
+    marker_size: 0.15         # tamaño físico del lado del marcador (m)
+    camera_topic: "/camera"
+    camera_info_topic: "/camera_info"

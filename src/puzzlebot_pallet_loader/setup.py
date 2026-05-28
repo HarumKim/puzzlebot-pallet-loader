@@ -35,6 +35,8 @@ setup(
             'detector_node = puzzlebot_pallet_loader.detector_node:main',
             'hybrid_a_star_bug0_node = puzzlebot_pallet_loader.hybrid_a_star_bug0_node:main',
             'odometry_node = puzzlebot_pallet_loader.odometry_node:main',
+            'ekf_aruco_localization_node = puzzlebot_pallet_loader.ekf_aruco_localization_node:main',
+            'aruco_detector_node = puzzlebot_pallet_loader.aruco_detector_node:main',
         ],
     },
 )
