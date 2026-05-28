@@ -1,0 +1,17 @@
+# ArUco detector parameters
+aruco_detector_node:
+  ros__parameters:
+    aruco_dictionary: 0       # cv2.aruco.DICT_4X4_50
+    marker_size: 0.15         # physical side length in meters
+    camera_topic: "/camera"
+    camera_info_topic: "/camera_info"
+
+# Known ArUco landmark positions — extracted from puzzlebot_aruco_markers.world
+# These are the world-frame (x, y) positions and orientations of each marker.
+# The EKF uses these as fixed reference points for correction.
+aruco_map:
+  ros__parameters:
+    marker_ids:    [0,       1,       2,      3]
+    marker_x:      [2.5,     2.5,    -0.5,   -0.5]
+    marker_y:      [-0.5,    2.5,     2.5,   -0.5]
+    marker_theta:  [3.14159, 4.71239, 0.0,    1.5708]

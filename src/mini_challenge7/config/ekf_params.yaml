@@ -1,0 +1,30 @@
+ekf_aruco_localization_node:
+  ros__parameters:
+    # ── Robot physical parameters ─────────────────────────────────────
+    wheel_radius: 0.05        # m
+    wheel_base: 0.19          # m (distance between wheels)
+    dt: 0.05                  # s (prediction timer period)
+
+    # ── Process noise Q (diagonal) ───────────────────────────────────
+    # How much we distrust the encoders per step
+    q_x: 0.01                # m²
+    q_y: 0.01                # m²
+    q_theta: 0.005            # rad²
+
+    # ── Measurement noise R (diagonal) ───────────────────────────────
+    # How much we distrust the ArUco range/bearing measurements
+    r_range: 0.05             # m²
+    r_bearing: 0.05           # rad²
+
+    # ── Mahalanobis gate ─────────────────────────────────────────────
+    # chi² 95% confidence with 2 DOF = 5.991
+    mahalanobis_threshold: 5.991
+
+    # ── Topics ───────────────────────────────────────────────────────
+    ekf_odom_topic: "/ekf_odom"
+    aruco_topic: "/aruco_measurements"
+
+    # ── Frames ───────────────────────────────────────────────────────
+    odom_frame: "odom"
+    base_frame: "base_link"
+    laser_frame: "laser"

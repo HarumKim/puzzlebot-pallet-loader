@@ -1,0 +1,16 @@
+# Fallback camera calibration — used only when /camera_info is unavailable.
+# In Gazebo, /camera_info is published automatically by the bridge.
+#
+# Derived from the Gazebo camera sensor definition:
+#   image: 640x480, hfov = 1.089 rad
+#   fx = fy = (width/2) / tan(hfov/2) = 320 / tan(0.5445) ≈ 554.25
+camera_calibration:
+  ros__parameters:
+    image_width: 640
+    image_height: 480
+    # Row-major 3x3 camera matrix [fx, 0, cx, 0, fy, cy, 0, 0, 1]
+    camera_matrix: [554.25, 0.0, 320.0,
+                    0.0, 554.25, 240.0,
+                    0.0, 0.0, 1.0]
+    # Distortion coefficients [k1, k2, p1, p2, k3]
+    distortion_coefficients: [0.0, 0.0, 0.0, 0.0, 0.0]
