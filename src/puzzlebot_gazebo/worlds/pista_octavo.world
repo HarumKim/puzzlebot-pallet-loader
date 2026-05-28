@@ -35,32 +35,36 @@
     <!-- ArUco markers para localización EKF -->
     <!-- Pista: x=[0, 4.84], y=[0, 3.67] — marcadores en las 4 esquinas interiores -->
    
+    <!-- ArUco markers para localización EKF -->
+<!-- Pista: x=[0, 4.84], y=[0, 3.67] -->
+<!-- Marcadores pegados a las paredes de cada esquina, pero dentro de la pista -->
+
     <include>
       <name>marker_0</name>
       <uri>model://aruco_marker_0</uri>
-      <pose>4.20 0.60 0.091 0 0 3.141592654</pose>
-      <!-- esquina inferior-derecha, separado del obstáculo inferior y del borde derecho -->
+      <pose>4.58 0.15 0.092 0 0 3.141592654</pose>
+      <!-- esquina inferior-derecha -->
     </include>
 
     <include>
       <name>marker_1</name>
       <uri>model://aruco_marker_1</uri>
-      <pose>4.20 3.10 0.091 0 0 4.712388980</pose>
-      <!-- esquina superior-derecha, dentro de la pista -->
+      <pose>4.58 3.42 0.092 0 0 4.712388980</pose>
+      <!-- esquina superior-derecha -->
     </include>
 
     <include>
       <name>marker_2</name>
       <uri>model://aruco_marker_2</uri>
-      <pose>0.60 3.10 0.091 0 0 0</pose>
-      <!-- esquina superior-izquierda, dentro de la pista -->
+      <pose>0.65 3.42 0.092 0 0 0</pose>
+      <!-- esquina superior-izquierda -->
     </include>
 
     <include>
       <name>marker_3</name>
       <uri>model://aruco_marker_3</uri>
-      <pose>0.60 0.60 0.091 0 0 1.570796327</pose>
-      <!-- esquina inferior-izquierda, separado del obstáculo inferior y del borde izquierdo -->
+      <pose>0.65 0.15 0.092 0 0 1.570796327</pose>
+      <!-- esquina inferior-izquierda -->
     </include>
   </world>
 </sdf>

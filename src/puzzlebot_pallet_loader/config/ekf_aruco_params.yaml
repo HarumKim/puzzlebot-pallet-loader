@@ -41,8 +41,8 @@ ekf_aruco_localization_node:
     # Mapa de landmarks ArUco (posiciones en frame world/odom)
     # Pista: x=[0, 4.84], y=[0, 3.67] — marcadores en las 4 esquinas interiores
     marker_ids:   [0,     1,     2,     3   ]
-    marker_x:     [4.20,  4.20,  0.60,  0.60]
-    marker_y:     [0.60,  3.10,  3.10,  0.60]
+    marker_x:     [4.58,  4.58,  0.25,  0.25]
+    marker_y:     [1.5,   3.42,  3.42,  1.5]
 
 # ── ArUco Detector Node ───────────────────────────────────────────────────────
 aruco_detector_node:

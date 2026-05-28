@@ -1,14 +1,26 @@
 /**:
   ros__parameters:
     waypoints:
-    - 3.5
-    - 2.7
+    - 0.25
+    - 1.5
+    - 0.25
+    - 3.42
+    - 4.58
+    - 3.42
+    - 4.58
+    - 1.5
     goal_tolerance: 0.15
 hybrid_a_star_bug0_node:
   ros__parameters:
     waypoints:
-    - 3.5
-    - 2.7
+    - 0.25
+    - 1.5
+    - 0.25
+    - 3.42
+    - 4.58
+    - 3.42
+    - 4.58
+    - 1.5
     goal_tolerance: 0.15
     bounds:
     - -1.0
