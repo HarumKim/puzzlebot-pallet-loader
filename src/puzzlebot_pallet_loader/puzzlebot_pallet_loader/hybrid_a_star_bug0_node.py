@@ -11,8 +11,8 @@ from sensor_msgs.msg import LaserScan
 
 DEFAULT_WAYPOINTS = [0.0, -2.45]
 
-MAX_LIN = 0.3
-MAX_ANG = 0.5
+MAX_LIN = 0.08
+MAX_ANG = 0.25
 
 KP_ANG = 2.0
 KP_LIN = 0.5
@@ -56,7 +56,8 @@ class HybridAStarBug0Node(Node):
 
         self.declare_parameter('bounds', [-3.0, -3.0, 3.0, 3.0])
         self.declare_parameter('resolution', 0.10)
-        self.declare_parameter('obstacles', Parameter.Type.DOUBLE_ARRAY)
+        #self.declare_parameter('obstacles', Parameter.Type.DOUBLE_ARRAY)
+        self.declare_parameter('obstacles', []) #prueba en físico
         self.declare_parameter('inflation_radius', 0.25)
         self.declare_parameter('path_stride', 1) # salto entre puntos de la ruta, mayor para rutas más curvas
         self.declare_parameter('known_obstacle_tolerance', 0.15)
@@ -629,6 +630,11 @@ def main(args=None):
 
     except KeyboardInterrupt:
         print('Hybrid A* + Bug0 node stopped by user.')
+
+    except RuntimeError as e:
+        # rclpy can throw RuntimeError during launch shutdown / Ctrl+C.
+        # Treat it as a clean shutdown instead of printing a traceback.
+        print(f'Hybrid A* + Bug0 node shutting down: {e}')
 
     finally:
         # Send a final stop command for safety.

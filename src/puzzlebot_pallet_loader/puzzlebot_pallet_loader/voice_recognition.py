@@ -28,9 +28,24 @@ class VoiceRecognitionNode(Node):
 def main(args=None):
     rclpy.init(args=args)
     node = VoiceRecognitionNode()
-    rclpy.spin(node)
-    node.destroy_node()
-    rclpy.shutdown()
+
+    try:
+        rclpy.spin(node)
+
+    except KeyboardInterrupt:
+        print('Voice recognition node stopped by user.')
+
+    finally:
+        try:
+            node.destroy_node()
+        except Exception:
+            pass
+
+        try:
+            if rclpy.ok():
+                rclpy.shutdown()
+        except Exception:
+            pass
 
 
 if __name__ == '__main__':

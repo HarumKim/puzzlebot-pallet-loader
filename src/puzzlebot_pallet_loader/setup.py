@@ -1,3 +1,5 @@
+import os
+from glob import glob
 from setuptools import find_packages, setup
 
 package_name = 'puzzlebot_pallet_loader'
@@ -12,6 +14,8 @@ setup(
         ('share/' + package_name, ['package.xml']),
         ('share/' + package_name, ['best.pt']),
         ('share/' + package_name + '/launch', ['launch/perception.launch.py']),
+        (os.path.join('share', package_name, 'launch'), glob('launch/*.py')),
+        (os.path.join('share', package_name, 'config'), glob('config/*.yaml')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -29,6 +33,8 @@ setup(
             'camera_publisher = puzzlebot_pallet_loader.camera_publisher:main',
             'voice_recognition = puzzlebot_pallet_loader.voice_recognition:main',
             'detector_node = puzzlebot_pallet_loader.detector_node:main',
+            'hybrid_a_star_bug0_node = puzzlebot_pallet_loader.hybrid_a_star_bug0_node:main',
+            'odometry_node = puzzlebot_pallet_loader.odometry_node:main',
         ],
     },
 )

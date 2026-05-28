@@ -1,0 +1,251 @@
+# Tutorial GitHub — Subir cambios al repositorio
+
+Este archivo resume los comandos básicos para revisar, agregar, confirmar y subir cambios a GitHub desde la terminal.
+
+Repositorio de ejemplo:
+
+```bash
+cd puzzlebot-pallet-loader
+```
+
+---
+
+## 1. Revisar el estado del repositorio
+
+Antes de agregar archivos, revisa qué cambió:
+
+```bash
+git status
+```
+
+Esto muestra archivos modificados, archivos nuevos o archivos pendientes por agregar al commit.
+
+Ejemplo de salida:
+
+```text
+Changes not staged for commit:
+    modified:   src/slam/images/map.png
+    modified:   src/slam/slam/mcl_node.py
+```
+
+---
+
+## 2. Revisar cambios antes de agregarlos
+
+Opcionalmente, revisa diferencias en archivos de texto/código:
+
+```bash
+git diff
+```
+
+Para revisar un archivo específico:
+
+```bash
+git diff src/slam/slam/mcl_node.py
+```
+
+Nota: en archivos binarios como imágenes `.png`, Git normalmente no muestra diferencias legibles.
+
+---
+
+## 3. Agregar archivos al área de staging
+
+Para agregar todos los cambios:
+
+```bash
+git add .
+```
+
+Para agregar solo archivos específicos:
+
+```bash
+git add src/slam/slam/mcl_node.py
+git add src/slam/images/map.png
+```
+
+---
+
+## 4. Confirmar que los archivos ya están listos para commit
+
+Después de `git add`, revisa otra vez:
+
+```bash
+git status
+```
+
+Deberías ver algo como:
+
+```text
+Changes to be committed:
+    modified:   src/slam/images/map.png
+    modified:   src/slam/slam/mcl_node.py
+```
+
+---
+
+## 5. Actualizar información remota
+
+Antes de hacer commit o push, puedes revisar si hay cambios nuevos en GitHub:
+
+```bash
+git fetch origin main
+```
+
+Esto actualiza la referencia remota, pero no modifica tus archivos locales.
+
+---
+
+## 6. Traer cambios remotos si es necesario
+
+Si hay cambios en GitHub que todavía no tienes localmente, usa:
+
+```bash
+git pull --rebase origin main
+```
+
+Esto descarga los cambios remotos y coloca tus cambios locales encima de ellos.
+
+Usa este comando cuando:
+- Otra persona subió cambios antes que tú.
+- Git te dice que tu rama local está detrás de `origin/main`.
+- Quieres evitar conflictos antes de hacer push.
+
+Si tu rama ya está actualizada con `origin/main`, puedes continuar directamente con el commit y push.
+
+---
+
+## 7. Crear el commit
+
+Crea un commit con un mensaje claro:
+
+```bash
+git commit -m "Uploading THE map"
+```
+
+Ejemplo:
+
+```bash
+git commit -m "Update SLAM map and MCL node"
+```
+
+Recomendación: usa mensajes descriptivos, por ejemplo:
+
+```bash
+git commit -m "Save generated SLAM map"
+git commit -m "Tune MCL mapping parameters"
+git commit -m "Fix map saving path"
+```
+
+---
+
+## 8. Subir cambios a GitHub
+
+Sube el commit a la rama principal:
+
+```bash
+git push origin main
+```
+
+Si todo sale bien, verás algo parecido a:
+
+```text
+To https://github.com/HarumKim/puzzlebot-pallet-loader.git
+   old_commit..new_commit  main -> main
+```
+
+---
+
+## Flujo rápido recomendado
+
+Cuando tu rama ya está actualizada:
+
+```bash
+cd ~/Documents/octavo/puzzlebot-pallet-loader
+git status
+git add .
+git status
+git fetch origin main
+git commit -m "Your commit message"
+git push origin main
+```
+
+---
+
+## Flujo recomendado si puede haber cambios remotos
+
+Cuando no estás seguro si alguien subió cambios antes:
+
+```bash
+cd ~/Documents/octavo/puzzlebot-pallet-loader
+git status
+git fetch origin main
+git pull --rebase origin main
+git add .
+git status
+git commit -m "Your commit message"
+git push origin main
+```
+
+---
+
+## Comandos útiles
+
+### Ver historial de commits
+
+```bash
+git log --oneline --graph --decorate -10
+```
+
+### Quitar un archivo del staging sin borrar cambios
+
+```bash
+git restore --staged <archivo>
+```
+
+Ejemplo:
+
+```bash
+git restore --staged src/slam/images/map.png
+```
+
+### Descartar cambios locales de un archivo
+
+Cuidado: esto borra los cambios no commiteados de ese archivo.
+
+```bash
+git restore <archivo>
+```
+
+Ejemplo:
+
+```bash
+git restore src/slam/slam/mcl_node.py
+```
+
+### Ver rama actual
+
+```bash
+git branch
+```
+
+### Ver remotos configurados
+
+```bash
+git remote -v
+```
+
+---
+
+## Nota sobre imágenes y archivos generados
+
+Si estás subiendo mapas generados, como:
+
+```text
+src/slam/images/map.png
+```
+
+asegúrate de que realmente quieras versionarlos en GitHub.
+
+Si el mapa es parte del resultado importante del proyecto, sí tiene sentido subirlo.
+
+Si es un archivo temporal que se genera muchas veces, considera agregarlo a `.gitignore`.

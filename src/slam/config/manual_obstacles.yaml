@@ -1,0 +1,188 @@
+description: Manual obstacle rectangles drawn over calibrated/cropped SLAM map.
+source:
+  input_image: /home/mateo/Documents/octavo/puzzlebot-pallet-loader/src/slam/images/map_similarity_crop.png
+  calibration_type: similarity_transform_uniform_scale
+map_geometry:
+  scale_px_per_m: 20.454545454545457
+  crop_world_bounds_m:
+    x_min: -1.0
+    x_max: 5.84
+    y_min: -1.0
+    y_max: 4.67
+  main_track_m:
+    x_min: 0.0
+    x_max: 4.84
+    y_min: 0.0
+    y_max: 3.67
+manual_openings_reference_not_used_by_astar:
+- id: 0
+  type: manual_opening_reference
+  bbox_m:
+  - 4.72
+  - 2.91
+  - 4.92
+  - 3.35
+  bbox_format: '[xmin, ymin, xmax, ymax]'
+  source_pixel_rect:
+  - 117
+  - 27
+  - 121
+  - 36
+- id: 1
+  type: manual_opening_reference
+  bbox_m:
+  - 4.7700000000000005
+  - 2.37
+  - 4.92
+  - 2.7600000000000002
+  bbox_format: '[xmin, ymin, xmax, ymax]'
+  source_pixel_rect:
+  - 118
+  - 39
+  - 121
+  - 47
+- id: 2
+  type: manual_opening_reference
+  bbox_m:
+  - 4.72
+  - 1.98
+  - 4.92
+  - 2.27
+  bbox_format: '[xmin, ymin, xmax, ymax]'
+  source_pixel_rect:
+  - 117
+  - 49
+  - 121
+  - 55
+obstacles:
+- id: 0
+  type: manual_axis_aligned_rectangle
+  bbox_m:
+  - 0.03
+  - 1.0
+  - 0.52
+  - 3.35
+  bbox_format: '[xmin, ymin, xmax, ymax]'
+  source_pixel_rect:
+  - 21
+  - 27
+  - 31
+  - 75
+- id: 1
+  type: manual_axis_aligned_rectangle
+  bbox_m:
+  - 1.1
+  - 2.27
+  - 2.47
+  - 2.67
+  bbox_format: '[xmin, ymin, xmax, ymax]'
+  source_pixel_rect:
+  - 43
+  - 41
+  - 71
+  - 49
+- id: 2
+  type: manual_axis_aligned_rectangle
+  bbox_m:
+  - 1.05
+  - 1.05
+  - 2.32
+  - 1.49
+  bbox_format: '[xmin, ymin, xmax, ymax]'
+  source_pixel_rect:
+  - 42
+  - 65
+  - 68
+  - 74
+- id: 3
+  type: manual_axis_aligned_rectangle
+  bbox_m:
+  - 3.0100000000000002
+  - 1.3
+  - 3.6
+  - 2.47
+  bbox_format: '[xmin, ymin, xmax, ymax]'
+  source_pixel_rect:
+  - 82
+  - 45
+  - 94
+  - 69
+- id: 4
+  type: manual_axis_aligned_rectangle
+  bbox_m:
+  - 2.18
+  - 3.45
+  - 3.06
+  - 3.67
+  bbox_format: '[xmin, ymin, xmax, ymax]'
+  source_pixel_rect:
+  - 65
+  - 20
+  - 83
+  - 25
+- id: 5
+  type: manual_axis_aligned_rectangle
+  bbox_m:
+  - 1.54
+  - 0.0
+  - 2.7600000000000002
+  - 0.22
+  bbox_format: '[xmin, ymin, xmax, ymax]'
+  source_pixel_rect:
+  - 52
+  - 91
+  - 77
+  - 96
+obstacles_flat_for_astar:
+- 0.03
+- 1.0
+- 0.52
+- 3.35
+- 1.1
+- 2.27
+- 2.47
+- 2.67
+- 1.05
+- 1.05
+- 2.32
+- 1.49
+- 3.0100000000000002
+- 1.3
+- 3.6
+- 2.47
+- 2.18
+- 3.45
+- 3.06
+- 3.67
+- 1.54
+- 0.0
+- 2.7600000000000002
+- 0.22
+ros2_param_example:
+  hybrid_a_star_bug0_node:
+    ros__parameters:
+      obstacles:
+      - 0.03
+      - 1.0
+      - 0.52
+      - 3.35
+      - 1.1
+      - 2.27
+      - 2.47
+      - 2.67
+      - 1.05
+      - 1.05
+      - 2.32
+      - 1.49
+      - 3.0100000000000002
+      - 1.3
+      - 3.6
+      - 2.47
+      - 2.18
+      - 3.45
+      - 3.06
+      - 3.69
+      - 1.54
+      - -0.02
+      - 2.7600000000000002
+      - 0.22

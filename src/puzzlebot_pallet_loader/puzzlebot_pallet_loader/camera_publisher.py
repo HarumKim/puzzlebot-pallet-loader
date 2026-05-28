@@ -122,6 +122,7 @@ def main(args=None):
 
     try:
         rclpy.spin(camera_publisher)
+
     except KeyboardInterrupt:
         pass
 

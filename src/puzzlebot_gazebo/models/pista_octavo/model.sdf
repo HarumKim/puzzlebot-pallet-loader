@@ -1,0 +1,222 @@
+<?xml version="1.0" ?>
+<sdf version="1.8">
+  <model name="pista_octavo">
+    <static>true</static>
+
+    <!-- Textured map floor. Copy map_similarity_crop.png into:
+         models/manual_pallet_track/materials/textures/map_similarity_crop.png -->
+    <link name="map_floor">
+      <pose>2.4200 1.8350 0.001 0 0 0</pose>
+      <visual name="map_floor_visual">
+        <geometry>
+          <plane>
+            <normal>0 0 1</normal>
+            <size>6.8400 5.6700</size>
+          </plane>
+        </geometry>
+        <material>
+          <ambient>1 1 1 1</ambient>
+          <diffuse>1 1 1 1</diffuse>
+          <pbr>
+            <metal>
+              <albedo_map>model://pista_octavo/materials/textures/map_similarity_crop.png</albedo_map>
+            </metal>
+          </pbr>
+          <script>
+            <uri>model://pista_octavo/materials/scripts</uri>
+            <uri>model://pista_octavo/materials/textures</uri>
+            <name>pista_octavo/MapTexture</name>
+          </script>
+        </material>
+        <cast_shadows>false</cast_shadows>
+      </visual>
+      <collision name="map_floor_collision">
+        <geometry>
+          <plane>
+            <normal>0 0 1</normal>
+            <size>6.8400 5.6700</size>
+          </plane>
+        </geometry>
+      </collision>
+    </link>
+
+    <!-- Blue outline for the main 4.84 x 3.67 m rectangle, visual only. -->
+    
+    <link name="main_track_bottom_reference">
+      <pose>2.4200 0.0000 0.0100 0 0 0</pose>
+      <visual name="main_track_bottom_reference_visual">
+        <geometry>
+          <box><size>4.8400 0.0300 0.0200</size></box>
+        </geometry>
+        <material>
+          <ambient>0 0.2 1 1</ambient>
+          <diffuse>0 0.2 1 1</diffuse>
+        </material>
+      </visual>
+      <collision name="main_track_bottom_reference_collision">
+        <geometry>
+          <box><size>4.8400 0.0300 0.0200</size></box>
+        </geometry>
+      </collision>
+    </link>
+    
+    <link name="main_track_top_reference">
+      <pose>2.4200 3.6700 0.0100 0 0 0</pose>
+      <visual name="main_track_top_reference_visual">
+        <geometry>
+          <box><size>4.8400 0.0300 0.0200</size></box>
+        </geometry>
+        <material>
+          <ambient>0 0.2 1 1</ambient>
+          <diffuse>0 0.2 1 1</diffuse>
+        </material>
+      </visual>
+      <collision name="main_track_top_reference_collision">
+        <geometry>
+          <box><size>4.8400 0.0300 0.0200</size></box>
+        </geometry>
+      </collision>
+    </link>
+    
+    <link name="main_track_left_reference">
+      <pose>0.0000 1.8350 0.0100 0 0 0</pose>
+      <visual name="main_track_left_reference_visual">
+        <geometry>
+          <box><size>0.0300 3.6700 0.0200</size></box>
+        </geometry>
+        <material>
+          <ambient>0 0.2 1 1</ambient>
+          <diffuse>0 0.2 1 1</diffuse>
+        </material>
+      </visual>
+      <collision name="main_track_left_reference_collision">
+        <geometry>
+          <box><size>0.0300 3.6700 0.0200</size></box>
+        </geometry>
+      </collision>
+    </link>
+    
+    <link name="main_track_right_reference">
+      <pose>4.8400 1.8350 0.0100 0 0 0</pose>
+      <visual name="main_track_right_reference_visual">
+        <geometry>
+          <box><size>0.0300 3.6700 0.0200</size></box>
+        </geometry>
+        <material>
+          <ambient>0 0.2 1 1</ambient>
+          <diffuse>0 0.2 1 1</diffuse>
+        </material>
+      </visual>
+      <collision name="main_track_right_reference_collision">
+        <geometry>
+          <box><size>0.0300 3.6700 0.0200</size></box>
+        </geometry>
+      </collision>
+    </link>
+
+    <!-- Manual obstacle boxes generated from manual_obstacles.yaml. -->
+    
+    <link name="manual_obstacle_0">
+      <pose>0.2750 2.1750 0.3000 0 0 0</pose>
+      <visual name="manual_obstacle_0_visual">
+        <geometry>
+          <box><size>0.4900 2.3500 0.6000</size></box>
+        </geometry>
+        <material>
+          <ambient>0.1 0.1 0.1 1</ambient>
+          <diffuse>0.1 0.1 0.1 1</diffuse>
+        </material>
+      </visual>
+      <collision name="manual_obstacle_0_collision">
+        <geometry>
+          <box><size>0.4900 2.3500 0.6000</size></box>
+        </geometry>
+      </collision>
+    </link>
+    <link name="manual_obstacle_1">
+      <pose>1.7850 2.4700 0.3000 0 0 0</pose>
+      <visual name="manual_obstacle_1_visual">
+        <geometry>
+          <box><size>1.3700 0.4000 0.6000</size></box>
+        </geometry>
+        <material>
+          <ambient>0.1 0.1 0.1 1</ambient>
+          <diffuse>0.1 0.1 0.1 1</diffuse>
+        </material>
+      </visual>
+      <collision name="manual_obstacle_1_collision">
+        <geometry>
+          <box><size>1.3700 0.4000 0.6000</size></box>
+        </geometry>
+      </collision>
+    </link>
+    <link name="manual_obstacle_2">
+      <pose>1.6850 1.2700 0.3000 0 0 0</pose>
+      <visual name="manual_obstacle_2_visual">
+        <geometry>
+          <box><size>1.2700 0.4400 0.6000</size></box>
+        </geometry>
+        <material>
+          <ambient>0.1 0.1 0.1 1</ambient>
+          <diffuse>0.1 0.1 0.1 1</diffuse>
+        </material>
+      </visual>
+      <collision name="manual_obstacle_2_collision">
+        <geometry>
+          <box><size>1.2700 0.4400 0.6000</size></box>
+        </geometry>
+      </collision>
+    </link>
+    <link name="manual_obstacle_3">
+      <pose>3.3050 1.8850 0.3000 0 0 0</pose>
+      <visual name="manual_obstacle_3_visual">
+        <geometry>
+          <box><size>0.5900 1.1700 0.6000</size></box>
+        </geometry>
+        <material>
+          <ambient>0.1 0.1 0.1 1</ambient>
+          <diffuse>0.1 0.1 0.1 1</diffuse>
+        </material>
+      </visual>
+      <collision name="manual_obstacle_3_collision">
+        <geometry>
+          <box><size>0.5900 1.1700 0.6000</size></box>
+        </geometry>
+      </collision>
+    </link>
+    <link name="manual_obstacle_4">
+      <pose>2.6200 3.5600 0.3000 0 0 0</pose>
+      <visual name="manual_obstacle_4_visual">
+        <geometry>
+          <box><size>0.8800 0.2200 0.6000</size></box>
+        </geometry>
+        <material>
+          <ambient>0.1 0.1 0.1 1</ambient>
+          <diffuse>0.1 0.1 0.1 1</diffuse>
+        </material>
+      </visual>
+      <collision name="manual_obstacle_4_collision">
+        <geometry>
+          <box><size>0.8800 0.2200 0.6000</size></box>
+        </geometry>
+      </collision>
+    </link>
+    <link name="manual_obstacle_5">
+      <pose>2.1500 0.1100 0.3000 0 0 0</pose>
+      <visual name="manual_obstacle_5_visual">
+        <geometry>
+          <box><size>1.2200 0.2200 0.6000</size></box>
+        </geometry>
+        <material>
+          <ambient>0.1 0.1 0.1 1</ambient>
+          <diffuse>0.1 0.1 0.1 1</diffuse>
+        </material>
+      </visual>
+      <collision name="manual_obstacle_5_collision">
+        <geometry>
+          <box><size>1.2200 0.2200 0.6000</size></box>
+        </geometry>
+      </collision>
+    </link>
+  </model>
+</sdf>

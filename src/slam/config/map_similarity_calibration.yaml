@@ -1,0 +1,83 @@
+description: 'SLAM map similarity calibration: rotation + translation + uniform scale.'
+calibration_type: similarity_transform_uniform_scale
+image:
+  width_px: 300
+  height_px: 300
+track:
+  width_m: 4.84
+  height_m: 3.67
+  crop_margin_m: 1.0
+  origin: origin_0_0
+  x_axis: origin_0_0_to_x_axis_end
+  y_axis: orthogonal_axis_selected_by_y_side_hint
+clicked_points_px:
+  origin_0_0:
+  - 137.0
+  - 215.0
+  x_axis_end:
+  - 236.0
+  - 215.0
+  y_side_hint:
+  - 138.0
+  - 139.0
+basis:
+  origin_px:
+  - 137.0
+  - 215.0
+  vx_image_unit:
+  - 1.0
+  - 0.0
+  vy_image_unit:
+  - 0.0
+  - -1.0
+  scale_px_per_m: 20.454545454545457
+  meters_per_pixel: 0.048888888888888885
+main_rectangle_px:
+  origin_0_0:
+  - 137.0
+  - 215.0
+  x_axis_end:
+  - 236.0
+  - 215.0
+  opposite_corner:
+  - 236.0
+  - 139.9318181818182
+  y_axis_end:
+  - 137.0
+  - 139.9318181818182
+crop:
+  world_bounds_m:
+    x_min: -1.0
+    x_max: 5.84
+    y_min: -1.0
+    y_max: 4.67
+  crop_corners_px:
+    bottom_left:
+    - 116.54545454545455
+    - 235.45454545454547
+    bottom_right:
+    - 256.4545454545455
+    - 235.45454545454547
+    top_right:
+    - 256.4545454545455
+    - 119.47727272727272
+    top_left:
+    - 116.54545454545455
+    - 119.47727272727272
+  warp_matrix_original_image_to_crop_image:
+  - - 0.9935021855511614
+    - 2.0859816166698646e-17
+    - -115.78816518511175
+  - - 0.0
+    - 0.9915735900961051
+    - -118.47050756533636
+  - - -0.0
+    - 4.407603180485511e-19
+    - 1.0
+formulas:
+  image_to_world:
+  - delta = p_img - origin_px
+  - x_m = dot(delta, vx_image_unit) / scale_px_per_m
+  - y_m = dot(delta, vy_image_unit) / scale_px_per_m
+  world_to_image:
+  - p_img = origin_px + scale_px_per_m * (x_m * vx_image_unit + y_m * vy_image_unit)

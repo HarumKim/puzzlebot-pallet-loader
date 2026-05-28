@@ -1,0 +1,14 @@
+material pista_octavo/MapTexture
+{
+  technique
+  {
+    pass
+    {
+      texture_unit
+      {
+        texture map_similarity_crop.png
+        filtering none
+      }
+    }
+  }
+}
