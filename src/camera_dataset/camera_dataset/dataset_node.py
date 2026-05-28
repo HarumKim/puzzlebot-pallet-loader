@@ -1,26 +1,26 @@
 import rclpy
-import cv2  
+import cv2
 import os
 import time
-import threading # Necesario para leer la terminal sin pausar ROS 2
+import threading
+import numpy as np
 from rclpy.node import Node
-from sensor_msgs.msg import Image
-from cv_bridge import CvBridge
+from sensor_msgs.msg import CompressedImage
 
 class DatasetCreator(Node):
     def __init__(self):
         super().__init__('dataset_creator')
-        
-        self.subscription = self.create_subscription(Image, 'camera/image_raw', self.image_callback, 10)
-        self.br = CvBridge()
+
+        self.subscription = self.create_subscription(
+            CompressedImage, 'camera/image_raw/compressed', self.image_callback, 10)
         self.recording = False
         self.image_count = 0
-        
-        self.save_dir = os.path.expanduser('~/ros2_ws/src/camera_dataset/dataset')
+
+        self.save_dir = os.path.expanduser('~/puzzlebot-pallet-loader/dataset')
         os.makedirs(self.save_dir, exist_ok=True)
-        
+
         self.last_save_time = time.time()
-        self.save_interval = 0.1
+        self.save_interval = 0.5
         self.latest_frame = None
 
         self.get_logger().info(f'Nodo de dataset iniciado. Guardando en: {self.save_dir}')
@@ -57,8 +57,8 @@ class DatasetCreator(Node):
                 print('Comando no reconocido. Usa s, p, c, o q.')
 
     def image_callback(self, msg):
-        # Guardamos el último frame recibido en una variable
-        self.latest_frame = self.br.imgmsg_to_cv2(msg, "bgr8")
+        np_arr = np.frombuffer(msg.data, dtype=np.uint8)
+        self.latest_frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
         
         if self.recording:
             current_time = time.time()

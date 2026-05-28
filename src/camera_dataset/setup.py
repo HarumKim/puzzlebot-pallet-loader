@@ -24,8 +24,9 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'dataset_creator = camera_dataset.dataset_creator:main',
-            'camera_node= camera_dataset.camera_node:main'
+            'dataset_creator = camera_dataset.dataset_node:main',
+            'camera_node= camera_dataset.camera_node:main',
+            'qr_distance = camera_dataset.qr_distance:main'
         ],
     },
 )
