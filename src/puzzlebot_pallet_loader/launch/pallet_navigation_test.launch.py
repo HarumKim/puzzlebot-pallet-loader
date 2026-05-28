@@ -10,13 +10,21 @@ def generate_launch_description():
         package='puzzlebot_pallet_loader',
         executable='odometry_node',
         name='odometry_node',
-        output='screen'
+        output='screen',
+        parameters=[{
+            'activate_Kalman': True,
+            'kalman_correction_topic': '/ground_truth',
+        }]
+        # parameters=[{
+        #     'activate_Kalman': False,
+        #     'kalman_correction_topic': '/odom',
+        # }]
     )
 
     astar_config = os.path.join(
         get_package_share_directory('puzzlebot_pallet_loader'),
         'config',
-        'pista_obtacles.yaml'
+        'pista_obstacles.yaml'
     )
 
     hybrid_a_star_bug0_node = Node(
@@ -28,7 +36,7 @@ def generate_launch_description():
             astar_config,
             {
                 'cmd_vel_topic': '/cmd_vel',
-                'odom_topic': '/ground_truth',#'/odom',
+                'odom_topic': '/odom', #/ground_truth','/odom',
                 'scan_topic': '/scan',
             }
         ]

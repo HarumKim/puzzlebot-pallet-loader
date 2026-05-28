@@ -9,9 +9,9 @@ from nav_msgs.msg import Odometry
 from sensor_msgs.msg import LaserScan
 
 
-DEFAULT_WAYPOINTS = [0.0, -2.45]
+DEFAULT_WAYPOINTS = [3.5, 2.7]
 
-MAX_LIN = 0.08
+MAX_LIN = 0.1
 MAX_ANG = 0.25
 
 KP_ANG = 2.0
@@ -36,7 +36,7 @@ class HybridAStarBug0Node(Node):
         super().__init__('hybrid_a_star_bug0_node')
 
         self.declare_parameter('cmd_vel_topic', '/cmd_vel')
-        self.declare_parameter('odom_topic', '/ground_truth')
+        self.declare_parameter('odom_topic', '/odom')
         self.declare_parameter('scan_topic', '/scan')
 
         cmd_vel_topic = self.get_parameter('cmd_vel_topic').value
@@ -56,8 +56,8 @@ class HybridAStarBug0Node(Node):
 
         self.declare_parameter('bounds', [-3.0, -3.0, 3.0, 3.0])
         self.declare_parameter('resolution', 0.10)
-        #self.declare_parameter('obstacles', Parameter.Type.DOUBLE_ARRAY)
-        self.declare_parameter('obstacles', []) #prueba en físico
+        self.declare_parameter('obstacles', Parameter.Type.DOUBLE_ARRAY)
+        #self.declare_parameter('obstacles', []) #prueba en físico
         self.declare_parameter('inflation_radius', 0.25)
         self.declare_parameter('path_stride', 1) # salto entre puntos de la ruta, mayor para rutas más curvas
         self.declare_parameter('known_obstacle_tolerance', 0.15)
