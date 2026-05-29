@@ -1,53 +1,71 @@
 # =============================================================================
 # ekf_aruco_params.yaml
-#
-# Parámetros para el stack de localización ArUco-EKF del proyecto final.
-# Combina los parámetros del EKF y el mapa de landmarks en un solo archivo.
-#
-# Uso en el launch file:
-#   parameters=[ekf_aruco_params]
 # =============================================================================
 
-# ── EKF Localization Node ─────────────────────────────────────────────────────
 ekf_aruco_localization_node:
   ros__parameters:
 
     # Robot
-    wheel_radius: 0.05        # m
-    wheel_base: 0.19          # m (distancia entre ruedas)
-    dt: 0.05                  # s (periodo del timer de predicción)
+    wheel_radius: 0.05
+    wheel_base: 0.18
+    dt: 0.05
 
-    # Ruido de proceso Q — qué tanto desconfiamos de los encoders
-    q_x: 0.01                 # m²
-    q_y: 0.01                 # m²
-    q_theta: 0.005            # rad²
+    # Primero prueba navegación con false.
+    # Cuando ya detecte bien los ArUcos, cámbialo a true.
+    use_aruco: true
 
-    # Ruido de medición R — qué tanto desconfiamos de la cámara/ArUco
-    r_range: 0.05             # m²
-    r_bearing: 0.05           # rad²
+    # Ruido de proceso Q (ahora proporcional al movimiento)
+    # Valores más altos porque se multiplican por desplazamiento
+    q_x: 0.5
+    q_y: 0.5
+    q_theta: 0.3
 
-    # Umbral de Mahalanobis — chi² al 95% con 2 DOF
-    mahalanobis_threshold: 5.991
+    # Ruido de medición R — qué tanto confiar en las correcciones ArUco
+    # Más bajo = más confianza en ArUco
+    # 0.05 era demasiado agresivo, 0.25 las ignoraba, 0.10 es el balance
+    r_range: 0.10
+    r_bearing: 0.10
+
+    mahalanobis_threshold: 9.21
 
     # Topics
-    ekf_odom_topic: "/odom"              # el navegador ya lee /odom
+    ekf_odom_topic: "/ekf_odom"
     aruco_topic: "/aruco_measurements"
+    use_joint_states: true
+    joint_states_topic: "/joint_states"
+    left_wheel_joint: "wheel_left_joint"
+    right_wheel_joint: "wheel_right_joint"
+    left_wheel_sign: 1.0
+    right_wheel_sign: 1.0
 
     # Frames TF
     odom_frame: "odom"
     base_frame: "base_link"
     laser_frame: "laser"
 
-    # Mapa de landmarks ArUco (posiciones en frame world/odom)
-    # Pista: x=[0, 4.84], y=[0, 3.67] — marcadores en las 4 esquinas interiores
-    marker_ids:   [0,     1,     2,     3   ]
-    marker_x:     [4.58,  4.58,  0.25,  0.25]
-    marker_y:     [1.5,   3.42,  3.42,  1.5]
+    # Pose inicial del robot
+    initial_x: 0.25
+    initial_y: 0.25
+    initial_yaw: 0.0
+    initial_cov_x: 0.01
+    initial_cov_y: 0.01
+    initial_cov_yaw: 0.01
+
+    # Mapa de landmarks ArUco
+    # Debe coincidir EXACTAMENTE con las poses del .world
+    marker_ids:   [0,    1,    2,    3]
+    marker_x:     [4.58, 4.58, 0.65, 0.65]
+    marker_y:     [0.70, 3.05, 3.65, 0.10]
+    marker_theta: [1.5708, 3.14159, 4.71239, 1.5708]
 
 # ── ArUco Detector Node ───────────────────────────────────────────────────────
 aruco_detector_node:
   ros__parameters:
-    aruco_dictionary: 0       # cv2.aruco.DICT_4X4_50
-    marker_size: 0.15         # tamaño físico del lado del marcador (m)
+    aruco_dictionary: 0
+    marker_size: 0.15
     camera_topic: "/camera"
     camera_info_topic: "/camera_info"
+
+    camera_x_offset: 0.08
+    camera_y_offset: 0.0
+    camera_yaw_offset: 0.0

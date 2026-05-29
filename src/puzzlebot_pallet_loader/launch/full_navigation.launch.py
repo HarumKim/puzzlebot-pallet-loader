@@ -69,7 +69,7 @@ def generate_launch_description():
             nav_params,
             {
                 'cmd_vel_topic': '/cmd_vel',
-                'odom_topic': '/odom',
+                'odom_topic': '/ekf_odom',  
                 'scan_topic': '/scan',
             },
         ],

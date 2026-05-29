@@ -11,8 +11,10 @@ from sensor_msgs.msg import LaserScan
 
 DEFAULT_WAYPOINTS = [3.5, 2.7]
 
-MAX_LIN = 0.1
-MAX_ANG = 0.25
+MAX_LIN = 0.25
+
+LOCALIZATION_COV_THRESHOLD = 0.10
+MAX_ANG = 0.60
 
 KP_ANG = 2.0
 KP_LIN = 0.5
@@ -91,6 +93,8 @@ class HybridAStarBug0Node(Node):
         self.y = 0.0
         self.yaw = 0.0
         self._odom_ready = False
+        self._localization_converged = False
+        self._yaw_cov = float('inf')
         self._scan = None
 
         self.wp_idx = 0
@@ -118,12 +122,28 @@ class HybridAStarBug0Node(Node):
         self.yaw = _quat_to_yaw(q.x, q.y, q.z, q.w)
         self._odom_ready = True
 
+        # Track yaw covariance (index 35 in 6×6 row-major = θθ)
+        self._yaw_cov = msg.pose.covariance[35]
+
     def _scan_cb(self, msg: LaserScan):
         self._scan = msg
 
     def _loop(self):
         if not self._odom_ready or self._scan is None:
             return
+
+        # Wait for ArUco corrections to converge before moving
+        if not self._localization_converged:
+            if self._yaw_cov < LOCALIZATION_COV_THRESHOLD:
+                self._localization_converged = True
+                self.get_logger().info(
+                    f'Localization converged (yaw_cov={self._yaw_cov:.4f}). '
+                    f'Starting navigation from ({self.x:.2f}, {self.y:.2f}, '
+                    f'{math.degrees(self.yaw):.1f}°)'
+                )
+            else:
+                self._cmd(0.0, 0.0)
+                return
 
         if self.wp_idx >= len(self.waypoints):
             self._cmd(0.0, 0.0)
@@ -240,7 +260,7 @@ class HybridAStarBug0Node(Node):
         left_score = 0.6 * left + 0.4 * front_left
         right_score = 0.6 * right + 0.4 * front_right
 
-        side = 'right' if left_score > right_score else 'left'
+        side = 'left' if left_score > right_score else 'right'
         
         self.get_logger().info(
             f'Bug0 side selected: {side} '
@@ -284,20 +304,23 @@ class HybridAStarBug0Node(Node):
             corner_cleared = True
 
         if front_wide < WALL_DIST:
-            self._cmd(-MAX_LIN * 0.10, turn_away)
+            # Back up strongly and turn away to escape corner
+            self._cmd(-MAX_LIN * 0.4, turn_away)
 
         elif front_wide < OBS_THRESHOLD:
-            self._cmd(MAX_LIN * 0.10, turn_away)
+            # Move forward slightly but turn strongly away
+            self._cmd(MAX_LIN * 0.3, turn_away)
 
         elif not outer_corner and front_side < OBS_THRESHOLD:
-            self._cmd(MAX_LIN * 0.10, turn_away)
+            # Side is too close, push forward and turn away
+            self._cmd(MAX_LIN * 0.5, turn_away)
 
         elif outer_corner:
             if not corner_cleared:
-                self._cmd(MAX_LIN * 0.5, 0.0)
+                self._cmd(MAX_LIN * 0.6, 0.0)
 
             elif front_side < OBS_THRESHOLD:
-                self._cmd(MAX_LIN * 0.5, 0.0)
+                self._cmd(MAX_LIN * 0.6, 0.0)
 
             else:
                 self._cmd(MAX_LIN * 0.5, turn_toward * 0.5)

@@ -75,7 +75,7 @@ class OdometryNode(Node):
 
         self.declare_parameter("left_encoder_topic", "/VelocityEncL")
         self.declare_parameter("right_encoder_topic", "/VelocityEncR")
-        self.declare_parameter("odom_topic", "/odom")
+        self.declare_parameter("odom_topic", "/wheel_odom")
 
         self.declare_parameter("base_frame", "base_link")
         self.declare_parameter("odom_frame", "odom")
@@ -320,17 +320,17 @@ class OdometryNode(Node):
 
         self.odom_pub.publish(odom)
 
-        tf_odom = TransformStamped()
-        tf_odom.header.stamp = now
-        tf_odom.header.frame_id = self.odom_frame
-        tf_odom.child_frame_id = self.base_frame
+        # tf_odom = TransformStamped()
+        # tf_odom.header.stamp = now
+        # tf_odom.header.frame_id = self.odom_frame
+        # tf_odom.child_frame_id = self.base_frame
 
-        tf_odom.transform.translation.x = self.x
-        tf_odom.transform.translation.y = self.y
-        tf_odom.transform.translation.z = 0.0
-        tf_odom.transform.rotation = q
+        # tf_odom.transform.translation.x = self.x
+        # tf_odom.transform.translation.y = self.y
+        # tf_odom.transform.translation.z = 0.0
+        # tf_odom.transform.rotation = q
 
-        self.tf_br.sendTransform(tf_odom)
+        # self.tf_br.sendTransform(tf_odom)
 
     def _publish_laser_tf(self):
         tf_static = TransformStamped()

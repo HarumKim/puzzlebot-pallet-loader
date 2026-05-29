@@ -40,11 +40,19 @@ class ArucoDetectorNode(Node):
         self.declare_parameter('marker_size', 0.15)
         self.declare_parameter('camera_topic', '/camera')
         self.declare_parameter('camera_info_topic', '/camera_info')
+        
+        self.declare_parameter('camera_x_offset', 0.08)
+        self.declare_parameter('camera_y_offset', 0.0)
+        self.declare_parameter('camera_yaw_offset', 0.0)
 
         dict_id = self.get_parameter('aruco_dictionary').value
         self._marker_size = self.get_parameter('marker_size').value
         camera_topic = self.get_parameter('camera_topic').value
         camera_info_topic = self.get_parameter('camera_info_topic').value
+        
+        self.cam_x_offset = self.get_parameter('camera_x_offset').value
+        self.cam_y_offset = self.get_parameter('camera_y_offset').value
+        self.cam_yaw_offset = self.get_parameter('camera_yaw_offset').value
 
         # ── ArUco setup ───────────────────────────────────────────────
         self._aruco_dict = cv2.aruco.getPredefinedDictionary(dict_id)
@@ -134,14 +142,15 @@ class ArucoDetectorNode(Node):
             z_cam = tvec[2]  # depth = forward distance in camera
             x_cam = tvec[0]  # horizontal offset in camera
 
+            # Convert to base_link including extrinsics offsets
+            x_base = self.cam_x_offset + z_cam
+            y_base = self.cam_y_offset - x_cam
+
             # Range = Euclidean distance in the horizontal plane
-            # Using camera optical z (depth) and x (horizontal)
-            range_m = math.sqrt(z_cam**2 + x_cam**2)
+            range_m = math.sqrt(x_base**2 + y_base**2)
 
             # Bearing = angle from robot's forward axis
-            # In camera optical frame: atan2(-x_cam, z_cam)
-            # The negative on x_cam converts camera-right to robot-left
-            bearing_rad = math.atan2(-x_cam, z_cam)
+            bearing_rad = math.atan2(y_base, x_base) + self.cam_yaw_offset
 
             # Publish measurement
             meas = Float32MultiArray()
