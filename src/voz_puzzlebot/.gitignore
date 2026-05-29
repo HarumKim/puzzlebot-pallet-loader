@@ -1,0 +1,8 @@
+procesamiento_voz/venv/
+procesamiento_voz/DATASET/
+procesamiento_voz/__pycache__/
+build/
+install/
+log/
+__pycache__/
+*.pyc
