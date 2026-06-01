@@ -54,9 +54,9 @@ ekf_aruco_localization_node:
     # Mapa de landmarks ArUco
     # Debe coincidir EXACTAMENTE con las poses del .world
     marker_ids:   [0,    1,    2,    3]
-    marker_x:     [4.58, 4.58, 0.65, 0.25]
-    marker_y:     [0.70, 3.05, 3.65, 0.65]
-    marker_theta: [1.5708, 3.14159, 4.71239, 0.0]
+    marker_x:     [4.58, 4.80, 0.65, 0.05]
+    marker_y:     [0.05, 3.05, 3.65, 0.65]
+    marker_theta: [1.5708, 3.141592654, 4.71239, 0.0]
 
 # ── ArUco Detector Node ───────────────────────────────────────────────────────
 aruco_detector_node:

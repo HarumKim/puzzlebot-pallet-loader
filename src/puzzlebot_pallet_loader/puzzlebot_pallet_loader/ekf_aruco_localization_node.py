@@ -324,7 +324,7 @@ class EKFArucoLocalizationNode(Node):
 
         # Ignore unreliable detections (too close or too far)
         # Increased max range to 3.0m as requested by user
-        if z_range < 0.30 or z_range > 3.1:
+        if z_range < 0.30 or z_range > 3.36:
             self.get_logger().debug(
                 f'ArUco #{marker_id} ignored: range={z_range:.2f}m out of bounds')
             return

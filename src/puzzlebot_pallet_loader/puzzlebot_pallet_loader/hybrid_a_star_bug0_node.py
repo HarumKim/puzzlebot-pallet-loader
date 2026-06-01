@@ -351,14 +351,29 @@ class HybridAStarBug0Node(Node):
             return
 
         if occupancy[start[1]][start[0]]:
-            self.get_logger().error('Start cell is occupied.')
-            self._cmd(0.0, 0.0)
-            return
+            free = self._nearest_free_cell(start, occupancy)
+            if free is None:
+                self.get_logger().error('Start cell is occupied — no free neighbour found.')
+                self._cmd(0.0, 0.0)
+                return
+            self.get_logger().warn(
+                f'Start cell {start} occupied, using nearest free cell {free}.'
+            )
+            start = free
 
         if occupancy[goal[1]][goal[0]]:
-            self.get_logger().error('Goal cell is occupied.')
-            self._cmd(0.0, 0.0)
-            return
+            free = self._nearest_free_cell(goal, occupancy)
+            if free is None:
+                self.get_logger().error(
+                    f'Goal cell is occupied. goal=({gx:.2f},{gy:.2f}) '
+                    f'grid={goal} inflation={self._inflation_radius}m — no free neighbour.'
+                )
+                self._cmd(0.0, 0.0)
+                return
+            self.get_logger().warn(
+                f'Goal cell {goal} occupied, using nearest free cell {free}.'
+            )
+            goal = free
 
         grid_path = self._astar(start, goal, occupancy)
 
@@ -477,6 +492,31 @@ class HybridAStarBug0Node(Node):
         x = xmin + ix * self._resolution
         y = ymin + iy * self._resolution
         return x, y
+
+    def _nearest_free_cell(self, cell, occupancy, max_radius=20):
+        """BFS search for the closest free cell starting from *cell*."""
+        from collections import deque
+        visited = {cell}
+        queue = deque([cell])
+        while queue:
+            cx, cy = queue.popleft()
+            for dx in (-1, 0, 1):
+                for dy in (-1, 0, 1):
+                    if dx == 0 and dy == 0:
+                        continue
+                    nx, ny = cx + dx, cy + dy
+                    if (nx, ny) in visited:
+                        continue
+                    visited.add((nx, ny))
+                    if not self._inside_grid((nx, ny)):
+                        continue
+                    dist = abs(nx - cell[0]) + abs(ny - cell[1])
+                    if dist > max_radius:
+                        continue
+                    if not occupancy[ny][nx]:
+                        return (nx, ny)
+                    queue.append((nx, ny))
+        return None
 
     def _inside_grid(self, cell):
         ix, iy = cell

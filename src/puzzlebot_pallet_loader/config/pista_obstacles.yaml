@@ -1,16 +1,25 @@
 hybrid_a_star_bug0_node:
   ros__parameters:
+    # waypoints anteriores:
+    #   - 1.10  # WP0 x
+    #   - 2.9   # WP0 y
+    #   - 4.0   # WP1 x
+    #   - 3.1   # WP1 y
+    #   - 4.0   # WP2 x
+    #   - 0.8   # WP2 y
+    #   - 0.25  # WP3 x
+    #   - 0.25  # WP3 y
+
     waypoints:
-      - 1.0
+      - 0.80       # WP0: esquina superior izquierda
+      - 3.0
+      - 4.0        # WP1: esquina superior derecha
+      - 3.0
+      - 4.0        # WP2: esquina inferior derecha
       - 0.8
-      - 1.0
-      - 3.1
-      - 4.0
-      - 3.1
-      - 4.0
-      - 0.8
+      - 0.25       # WP3: regreso al inicio
       - 0.25
-      - 0.25
+    
 
     goal_tolerance: 0.18
 
@@ -23,7 +32,7 @@ hybrid_a_star_bug0_node:
     resolution: 0.05
     inflation_radius: 0.18
     path_stride: 2
-    known_obstacle_tolerance: 0.20
+    known_obstacle_tolerance: 0.25
     known_obstacle_angle_window_deg: 25.0
 
     obstacles:
