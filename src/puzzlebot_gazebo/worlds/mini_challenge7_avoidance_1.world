@@ -102,13 +102,13 @@
     <include>
       <name>marker_3</name>
       <uri>model://aruco_marker_3</uri>
-      <pose>1.50 1.20 0.091 0 0 3.14159</pose>
+      <pose>1.50 0.80 0.091 0 0 3.14159</pose>
     </include>
     <!--
     <include>
       <name>marker_4</name>
       <uri>model://aruco_marker_4</uri>
-      <pose>1.40 0.30 0.091 0 0 -1.5708</pose>
+      <pose>1.40 0.0 0.091 0 0 -1.5708</pose>
     </include>
     -->
 
