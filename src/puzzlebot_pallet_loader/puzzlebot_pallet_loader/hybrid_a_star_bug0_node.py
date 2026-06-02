@@ -105,6 +105,8 @@ class HybridAStarBug0Node(Node):
         self._wall_entry_pos = None
         self._corner_entry_pos = None
         self._bug0_side = None
+        self._dynamic_obstacles = []  # (x, y) world coords of unknown obstacles found by Bug0
+        self._unknown_obs_frames = 0  # consecutive frames with unknown obstacle in front
 
         self.create_timer(0.05, self._loop)
 
@@ -145,6 +147,22 @@ class HybridAStarBug0Node(Node):
                 self._cmd(0.0, 0.0)
                 return
 
+        # Safety: if the EKF reports a position outside the arena, the odometry
+        # has diverged (often after a long Bug0 maneuver without ArUco updates).
+        # Stop and wait — the localization convergence check will resume once
+        # a good ArUco correction brings the estimate back into bounds.
+        xmin, ymin, xmax, ymax = self._bounds
+        margin = 0.40
+        if not (xmin - margin <= self.x <= xmax + margin and
+                ymin - margin <= self.y <= ymax + margin):
+            self._cmd(0.0, 0.0)
+            self._localization_converged = False
+            self.get_logger().warn(
+                f'EKF position ({self.x:.2f}, {self.y:.2f}) outside arena — '
+                f'waiting for localization to re-converge.'
+            )
+            return
+
         if self.wp_idx >= len(self.waypoints):
             self._cmd(0.0, 0.0)
             return
@@ -171,15 +189,31 @@ class HybridAStarBug0Node(Node):
         if self._state == 'FOLLOW_PATH':
             if front < OBS_THRESHOLD:
                 if self._front_obstacle_is_known():
+                    self._unknown_obs_frames = 0
                     self._follow_astar_path()
                     return
 
+                self._unknown_obs_frames += 1
+                if self._unknown_obs_frames < 3:
+                    # Debounce: require 3 consecutive frames before triggering Bug0
+                    # to filter single-frame phantom LiDAR reflections.
+                    self._follow_astar_path()
+                    return
+
+                self._unknown_obs_frames = 0
                 self._state = 'BUG0_AVOID'
                 self._wall_entry_pos = (self.x, self.y)
                 self._corner_entry_pos = None
                 self._bug0_side = self._choose_bug0_side()
+                obs = self._front_obstacle_point_global()
+                if obs is not None:
+                    self._dynamic_obstacles.append((obs[0], obs[1]))
+                    self.get_logger().info(
+                        f'Unknown obstacle recorded at ({obs[0]:.2f}, {obs[1]:.2f}).'
+                    )
                 return
 
+            self._unknown_obs_frames = 0
             self._follow_astar_path()
 
         elif self._state == 'BUG0_AVOID':
@@ -189,6 +223,9 @@ class HybridAStarBug0Node(Node):
                 self._wall_entry_pos = None
                 self._corner_entry_pos = None
                 self._bug0_side = None
+                # Force replan so A* avoids the newly recorded dynamic obstacle
+                self.path = []
+                self.path_idx = 0
                 return
 
             if self._distance_from_current_path_point() > REPLAN_DISTANCE:
@@ -225,21 +262,22 @@ class HybridAStarBug0Node(Node):
         self._go_to_point(tx, ty, dist)
 
     def _can_return_to_path(self, front: float):
-        if self.path_idx >= len(self.path):
-            return False
-
-        tx, ty = self.path[self.path_idx]
-        goal_angle = math.atan2(ty - self.y, tx - self.x)
-        heading_err = abs(_wrap(goal_angle - self.yaw))
-
         wall_traveled = math.hypot(
             self.x - self._wall_entry_pos[0],
             self.y - self._wall_entry_pos[1],
         ) if self._wall_entry_pos else float('inf')
 
+        # Both front and the wall side must be clear — prevents returning after
+        # a simple backup where the obstacle is still immediately beside the robot.
+        # Heading check removed: exit forces a full A* replan that re-aligns the robot.
+        if self._bug0_side == 'left':
+            side_clear = self._min_range(50, 135) > OBS_EXIT_THRESHOLD
+        else:
+            side_clear = self._min_range(-135, -50) > OBS_EXIT_THRESHOLD
+
         return (
             front > OBS_EXIT_THRESHOLD
-            and heading_err < math.radians(HEADING_TOL)
+            and side_clear
             and wall_traveled > WALL_FOLLOW_MIN_DIST
         )
     
@@ -260,8 +298,21 @@ class HybridAStarBug0Node(Node):
         left_score = 0.6 * left + 0.4 * front_left
         right_score = 0.6 * right + 0.4 * front_right
 
+        # Bias toward the shorter-detour side, scaled by how off-center the
+        # obstacle is. The rotation needed to align: LEFT side = (90° - obs_rel)
+        # CW, RIGHT side = (obs_rel + 90°) CCW. LEFT is shorter when obs_rel > 0.
+        obs = self._front_obstacle_point_global()
+        if obs is not None:
+            obs_rel = _wrap(math.atan2(obs[1] - self.y, obs[0] - self.x) - self.yaw)
+            # Larger |obs_rel| = bigger angle advantage = stronger bias (capped at 4.0).
+            angle_bias = min(2.0 + abs(obs_rel) / math.radians(45), 4.0)
+            if obs_rel >= 0:    # obstacle left of forward → LEFT side shorter
+                left_score += angle_bias
+            else:               # obstacle right of forward → RIGHT side shorter
+                right_score += angle_bias
+
         side = 'left' if left_score > right_score else 'right'
-        
+
         self.get_logger().info(
             f'Bug0 side selected: {side} '
             f'(left_score={left_score:.2f}, right_score={right_score:.2f})'
@@ -304,28 +355,31 @@ class HybridAStarBug0Node(Node):
             corner_cleared = True
 
         if front_wide < WALL_DIST:
-            # Back up strongly and turn away to escape corner
-            self._cmd(-MAX_LIN * 0.4, turn_away)
+            # Phase 1 — back up straight. No spin: pure clearance.
+            self._cmd(-MAX_LIN * 0.4, 0.0)
 
-        elif front_wide < OBS_THRESHOLD:
-            # Move forward slightly but turn strongly away
-            self._cmd(MAX_LIN * 0.3, turn_away)
+        elif outer_corner and front_wide < OBS_EXIT_THRESHOLD:
+            # Phase 2 — obstacle is still roughly ahead (side is empty because
+            # the obstacle hasn't moved to the wall side yet). Rotate in place
+            # until it arrives in the side_range zone, then phase 3 takes over.
+            self._cmd(0.0, turn_away)
 
         elif not outer_corner and front_side < OBS_THRESHOLD:
-            # Side is too close, push forward and turn away
-            self._cmd(MAX_LIN * 0.5, turn_away)
+            # Obstacle in the front-side quadrant: turn away to clear it.
+            self._cmd(MAX_LIN * 0.3, turn_away * 0.7)
 
         elif outer_corner:
+            # Real outer corner: front is clear (>= OBS_EXIT_THRESHOLD).
+            # Advance to fully clear the corner, then curve toward the wall.
             if not corner_cleared:
                 self._cmd(MAX_LIN * 0.6, 0.0)
-
             elif front_side < OBS_THRESHOLD:
                 self._cmd(MAX_LIN * 0.6, 0.0)
-
             else:
                 self._cmd(MAX_LIN * 0.5, turn_toward * 0.5)
 
         else:
+            # Phase 3 — obstacle is on the wall side: proportional correction.
             angular = _clamp(
                 wall_correction_sign * KP_WALL * err,
                 -MAX_ANG,
@@ -351,15 +405,13 @@ class HybridAStarBug0Node(Node):
             return
 
         if occupancy[start[1]][start[0]]:
-            free = self._nearest_free_cell(start, occupancy)
-            if free is None:
-                self.get_logger().error('Start cell is occupied — no free neighbour found.')
-                self._cmd(0.0, 0.0)
-                return
+            # The robot is physically here, so clear its own cell regardless of
+            # what the occupancy grid says (usually caused by dynamic obstacle
+            # inflation overlapping the robot's post-Bug0 position).
+            occupancy[start[1]][start[0]] = False
             self.get_logger().warn(
-                f'Start cell {start} occupied, using nearest free cell {free}.'
+                f'Start cell {start} was occupied — cleared to allow planning from current position.'
             )
-            start = free
 
         if occupancy[goal[1]][goal[0]]:
             free = self._nearest_free_cell(goal, occupancy)
@@ -468,6 +520,16 @@ class HybridAStarBug0Node(Node):
                 for gx in range(x0 - inflation_cells, x1 + inflation_cells + 1):
                     if self._inside_grid((gx, gy)):
                         grid[gy][gx] = True
+
+        # Mark unknown obstacles detected at runtime by Bug0
+        dyn_cells = int(math.ceil(0.30 / self._resolution))
+        for ox, oy in self._dynamic_obstacles:
+            cx, cy = self._world_to_grid(ox, oy)
+            for gy in range(cy - dyn_cells, cy + dyn_cells + 1):
+                for gx in range(cx - dyn_cells, cx + dyn_cells + 1):
+                    if self._inside_grid((gx, gy)):
+                        if math.hypot(gx - cx, gy - cy) <= dyn_cells:
+                            grid[gy][gx] = True
 
         return grid
 

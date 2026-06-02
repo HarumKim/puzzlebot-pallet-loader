@@ -67,38 +67,24 @@
   <uri>model://aruco_marker_3</uri>
   <pose>0.05 0.65 0.092 0 0 0.0</pose>
 </include>
+
+<!-- Obstáculo sorpresa para probar Bug 0 -->
+<model name="bug0_obstacle">
+  <static>true</static>
+  <pose>4.1 2.0 0.1 0 0 0</pose>
+  <link name="link">
+    <collision name="collision">
+      <geometry><box><size>0.2 0.2 0.2</size></box></geometry>
+    </collision>
+    <visual name="visual">
+      <geometry><box><size>0.2 0.2 0.2</size></box></geometry>
+      <material>
+        <ambient>1 0 0 1</ambient>
+        <diffuse>1 0 0 1</diffuse>
+      </material>
+    </visual>
+  </link>
+</model>
+
   </world>
 </sdf>
-
-
-
-
-<!-- <include>
-  <name>marker_0</name>
-  <uri>model://aruco_marker_0</uri>
-  <pose>4.58 0.30 0.092 0 0 3.14159</pose>
-  <!-- derecha-abajo: pegado a pared derecha, mirando hacia la izquierda/interior -->
-</include>
-
-<include>
-  <name>marker_1</name>
-  <uri>model://aruco_marker_1</uri>
-  <pose>4.58 3.05 0.092 0 0 4.71239</pose>
-  <!-- derecha-arriba: pegado a pared derecha, mirando hacia la izquierda/interior -->
-</include>
-
-<include>
-  <name>marker_2</name>
-  <uri>model://aruco_marker_2</uri>
-  <pose>0.65 3.65 0.092 0 0 0.0</pose>
-  <!-- izquierda-arriba: pegado a pared izquierda, mirando hacia la derecha/interior -->
-</include>
-
-<include>
-  <name>marker_3</name>
-  <uri>model://aruco_marker_3</uri>
-  <pose>0.55 0.10 0.092 0 0 1.5708</pose>
-  <!-- izquierda-abajo: pegado a pared izquierda, mirando hacia la derecha/interior -->
-</include>
-  </world>
-</sdf> -->

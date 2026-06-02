@@ -32,8 +32,8 @@ hybrid_a_star_bug0_node:
     resolution: 0.05
     inflation_radius: 0.18
     path_stride: 2
-    known_obstacle_tolerance: 0.25
-    known_obstacle_angle_window_deg: 25.0
+    known_obstacle_tolerance: 0.20
+    known_obstacle_angle_window_deg: 20.0
 
     obstacles:
       # Formato: xmin, ymin, xmax, ymax

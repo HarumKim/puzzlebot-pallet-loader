@@ -28,3 +28,11 @@ ekf_aruco_localization_node:
     odom_frame: "odom"
     base_frame: "base_link"
     laser_frame: "laser"
+
+    # ── Initial pose: robot starts outside the closed side of the maze ─
+    initial_x: 1.45
+    initial_y: 3.30
+    initial_yaw: 3.14159
+    initial_cov_x: 0.01
+    initial_cov_y: 0.01
+    initial_cov_yaw: 0.01

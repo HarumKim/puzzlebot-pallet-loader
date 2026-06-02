@@ -6,12 +6,19 @@ aruco_detector_node:
     camera_topic: "/camera"
     camera_info_topic: "/camera_info"
 
-# Known ArUco landmark positions — extracted from puzzlebot_aruco_markers.world
+# Known ArUco landmark positions - selected from mini_challenge7_avoidance_1.world
 # These are the world-frame (x, y) positions and orientations of each marker.
 # The EKF uses these as fixed reference points for correction.
 aruco_map:
   ros__parameters:
-    marker_ids:    [0,       1,       2,      3]
-    marker_x:      [2.5,     2.5,    -0.5,   -0.5]
-    marker_y:      [-0.5,    2.5,     2.5,   -0.5]
-    marker_theta:  [3.14159, 4.71239, 0.0,    1.5708]
+    marker_ids:    [0,      1,      2,      3]
+    marker_x:      [-2.65,  1.60,  -1.90,   1.50]
+    marker_y:      [-0.10, -1.20,   0.00,   1.20]
+    marker_theta:  [1.5708, 3.14159, 0.0, 3.14159]
+
+ekf_aruco_localization_node:
+  ros__parameters:
+    marker_ids:    [0,      1,      2,      3]
+    marker_x:      [-2.65,  1.60,  -1.90,   1.50]
+    marker_y:      [-0.10, -1.20,   0.00,   1.20]
+    marker_theta:  [1.5708, 3.14159, 0.0, 3.14159]

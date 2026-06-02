@@ -33,7 +33,10 @@ setup(
             'aruco_detector_node = mini_challenge7.aruco_detector_node:main',
             'ekf_aruco_localization_node = mini_challenge7.ekf_aruco_localization_node:main',
             'covariance_visualizer_node = mini_challenge7.covariance_visualizer_node:main',
-
+            'bug0_navigation_node = mini_challenge7.bug0_navigation_node:main',
+            'bug2_navigation_node = mini_challenge7.bug2_navigation_node:main',
+            'bug1_navigation_node = mini_challenge7.bug1_navigation_node:main',
+            'tangent_bug_node = mini_challenge7.tangent_bug_node:main',
         ],
     },
 )

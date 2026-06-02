@@ -34,6 +34,7 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy
 
 from std_msgs.msg import Float32, Float32MultiArray
+from sensor_msgs.msg import JointState
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import Quaternion, TransformStamped
 from tf2_ros import TransformBroadcaster, StaticTransformBroadcaster
@@ -74,6 +75,12 @@ class EKFArucoLocalizationNode(Node):
         self.declare_parameter('odom_frame', 'odom')
         self.declare_parameter('base_frame', 'base_link')
         self.declare_parameter('laser_frame', 'laser')
+        self.declare_parameter('initial_x', 0.0)
+        self.declare_parameter('initial_y', 0.0)
+        self.declare_parameter('initial_yaw', 0.0)
+        self.declare_parameter('initial_cov_x', 0.0)
+        self.declare_parameter('initial_cov_y', 0.0)
+        self.declare_parameter('initial_cov_yaw', 0.0)
 
         # ArUco map parameters
         self.declare_parameter('marker_ids', [0, 1, 2, 3])
@@ -110,9 +117,17 @@ class EKFArucoLocalizationNode(Node):
 
         # ── EKF state ─────────────────────────────────────────────────
         # μ = [x, y, θ]
-        self.mu = np.array([0.0, 0.0, 0.0])
-        # Σ = 3×3 covariance (start with known pose → zeros)
-        self.Sigma = np.zeros((3, 3))
+        self.mu = np.array([
+            float(self.get_parameter('initial_x').value),
+            float(self.get_parameter('initial_y').value),
+            float(self.get_parameter('initial_yaw').value),
+        ])
+        # Σ = 3×3 covariance
+        self.Sigma = np.diag([
+            float(self.get_parameter('initial_cov_x').value),
+            float(self.get_parameter('initial_cov_y').value),
+            float(self.get_parameter('initial_cov_yaw').value),
+        ])
 
         # ── Noise matrices ────────────────────────────────────────────
         self.Q = np.diag([q_x, q_y, q_theta])
@@ -128,9 +143,7 @@ class EKFArucoLocalizationNode(Node):
 
         # ── Subscriptions ─────────────────────────────────────────────
         self.create_subscription(
-            Float32, '/VelocityEncL', self._left_cb, qos_enc)
-        self.create_subscription(
-            Float32, '/VelocityEncR', self._right_cb, qos_enc)
+            JointState, '/joint_states', self._joint_states_cb, 10)
         self.create_subscription(
             Float32MultiArray, aruco_topic, self._aruco_cb, 10)
 
@@ -149,13 +162,17 @@ class EKFArucoLocalizationNode(Node):
             f'🧠 EKF localization started — r={self.r}, L={self.L}, dt={self.dt}')
 
     # ─────────────────────────────────────────────────────────────────
-    #  Encoder callbacks
+    #  Joint states callback (replaces encoder callbacks for Gazebo)
     # ─────────────────────────────────────────────────────────────────
-    def _left_cb(self, msg):
-        self.w_l = float(msg.data)
+    def _joint_states_cb(self, msg: JointState):
+        if not msg.name or not msg.velocity:
+            return
 
-    def _right_cb(self, msg):
-        self.w_r = float(msg.data)
+        for i, name in enumerate(msg.name):
+            if 'wheel_left_joint' in name:
+                self.w_l = float(msg.velocity[i])
+            elif 'wheel_right_joint' in name:
+                self.w_r = float(msg.velocity[i])
 
     # ─────────────────────────────────────────────────────────────────
     #  PREDICTION STEP

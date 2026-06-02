@@ -1,0 +1,33 @@
+tangent_bug_node:
+  ros__parameters:
+    cmd_vel_topic: "/cmd_vel"
+    odom_topic: "/ekf_odom"
+    scan_topic: "/scan"
+
+    # Closed trajectory:
+    # initial pose -> goal_1 -> goal_2 -> goal_3 -> goal_4 -> initial pose.
+    waypoints:
+      - -3.30   # WP0 — goal_1
+      - -0.15
+      - 1.50    # WP1 — goal_2
+      - -0.85
+      - -1.45   # WP2 — goal_3
+      - 0.0
+      - 1.25    # WP3 — goal_4
+      - 1.35
+      - 1.45    # WP4 — regresa a la posicion inicial cerrada
+      - 3.30
+
+    goal_tolerance: 0.22
+    max_linear_speed: 0.22
+    max_angular_speed: 0.70
+    obstacle_threshold: 0.35
+    wall_distance: 0.35
+    front_half_angle_deg: 30.0
+    goal_cone_deg: 20.0
+    discontinuity_threshold: 0.35
+    min_tangent_dist: 0.20
+    bf_exit_margin: 0.10
+    bf_min_travel: 0.50
+    wait_for_localization: false   # paso 1: sin esperar EKF
+    yaw_covariance_threshold: 0.10
