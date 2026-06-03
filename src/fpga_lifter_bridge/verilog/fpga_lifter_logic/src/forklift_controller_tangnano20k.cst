@@ -1,0 +1,114 @@
+// ============================================================
+// Tang Nano 20K - Forklift Controller CST
+// SPI mapping kept as in the SPI practice setup with Jetson.
+//
+// IMPORTANT FIX:
+// The previous enc_a/enc_b/lower_ir pins were placed on dedicated SSPI pins
+// for the selected Gowin package, so Gowin rejected them.
+// This version keeps SPI the same and moves encoder/IR signals to generic GPIOs.
+//
+// FPGA top module: forklift_controller
+// I/O standard: 3.3 V logic
+// ============================================================
+
+
+// ------------------------------------------------------------
+// System clock - Tang Nano 20K onboard 27 MHz clock
+// ------------------------------------------------------------
+IO_LOC "clk" 4;
+IO_PORT "clk" IO_TYPE=LVCMOS33;
+
+
+// ------------------------------------------------------------
+// Reset input - active low
+// ------------------------------------------------------------
+IO_LOC "rst_n" 88;
+IO_PORT "rst_n" IO_TYPE=LVCMOS33 PULL_MODE=UP;
+
+
+// ------------------------------------------------------------
+// SPI interface - SAME AS SPI PRACTICE WITH JETSON
+// Jetson physical pin 19 MOSI  -> FPGA mosi
+// Jetson physical pin 21 MISO  -> FPGA miso
+// Jetson physical pin 23 SCK   -> FPGA sck
+// Jetson physical pin 24 CS0   -> FPGA cs_n
+// Jetson GND                   -> FPGA GND
+// ------------------------------------------------------------
+
+IO_LOC "sck" 27;      // IOB8A
+IO_PORT "sck" IO_TYPE=LVCMOS33;
+
+IO_LOC "mosi" 28;     // IOB8B
+IO_PORT "mosi" IO_TYPE=LVCMOS33;
+
+IO_LOC "miso" 29;     // IOB14A
+IO_PORT "miso" IO_TYPE=LVCMOS33;
+
+IO_LOC "cs_n" 30;     // IOB14B
+IO_PORT "cs_n" IO_TYPE=LVCMOS33 PULL_MODE=UP;
+
+
+// ------------------------------------------------------------
+// Motor driver outputs
+// Do not connect FPGA pins directly to the DC motor.
+// Connect these to the motor driver logic inputs.
+// ------------------------------------------------------------
+
+IO_LOC "pwm_out" 31;      // IOB29A
+IO_PORT "pwm_out" IO_TYPE=LVCMOS33;
+
+IO_LOC "dir_out" 25;      // IOB6A
+IO_PORT "dir_out" IO_TYPE=LVCMOS33;
+
+IO_LOC "brake_out" 26;    // IOB6B
+IO_PORT "brake_out" IO_TYPE=LVCMOS33;
+
+
+// ------------------------------------------------------------
+// Encoder inputs - moved away from dedicated SSPI pins
+// Encoder output must be 3.3 V.
+// ------------------------------------------------------------
+
+IO_LOC "enc_a" 51;        // IOR45A
+IO_PORT "enc_a" IO_TYPE=LVCMOS33 PULL_MODE=UP;
+
+IO_LOC "enc_b" 48;        // IOR49B
+IO_PORT "enc_b" IO_TYPE=LVCMOS33 PULL_MODE=UP;
+
+
+// ------------------------------------------------------------
+// IR limit sensors - moved away from dedicated SSPI pins
+// Most IR modules are active-low:
+// no detection = 1
+// detection    = 0
+// Verilog inverts them internally.
+// ------------------------------------------------------------
+
+IO_LOC "lower_ir" 49;     // IOR49A
+IO_PORT "lower_ir" IO_TYPE=LVCMOS33 PULL_MODE=UP;
+
+IO_LOC "upper_ir" 86;     // IOT40A
+IO_PORT "upper_ir" IO_TYPE=LVCMOS33 PULL_MODE=UP;
+
+
+// ------------------------------------------------------------
+// Onboard debug LEDs
+// ------------------------------------------------------------
+
+IO_LOC "leds[0]" 15;
+IO_PORT "leds[0]" IO_TYPE=LVCMOS33;
+
+IO_LOC "leds[1]" 16;
+IO_PORT "leds[1]" IO_TYPE=LVCMOS33;
+
+IO_LOC "leds[2]" 17;
+IO_PORT "leds[2]" IO_TYPE=LVCMOS33;
+
+IO_LOC "leds[3]" 18;
+IO_PORT "leds[3]" IO_TYPE=LVCMOS33;
+
+IO_LOC "leds[4]" 19;
+IO_PORT "leds[4]" IO_TYPE=LVCMOS33;
+
+IO_LOC "leds[5]" 20;
+IO_PORT "leds[5]" IO_TYPE=LVCMOS33;

@@ -1,0 +1,10 @@
+[
+ {
+  "InstFile" : "/home/mateo/Documents/octavo/puzzlebot-pallet-loader/src/fpga_lifter_bridge/verilog/fpga_lifter_logic/src/forklift_controller.v",
+  "InstLine" : 1,
+  "InstName" : "forklift_controller",
+  "ModuleFile" : "/home/mateo/Documents/octavo/puzzlebot-pallet-loader/src/fpga_lifter_bridge/verilog/fpga_lifter_logic/src/forklift_controller.v",
+  "ModuleLine" : 1,
+  "ModuleName" : "forklift_controller"
+ }
+]
