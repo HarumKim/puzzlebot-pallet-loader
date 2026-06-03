@@ -90,6 +90,7 @@ class TangentBugNode(Node):
         self.corner_entry_pos = None
         self.localization_ready = False
         self._log_tick = 0
+        self.circuit_done = False
 
         self.create_timer(0.05, self._loop)
         self.get_logger().info(f'Tangent Bug started — {len(self.waypoints)} waypoints.')
@@ -114,6 +115,9 @@ class TangentBugNode(Node):
     # ------------------------------------------------------------------ main loop
 
     def _loop(self):
+        if self.circuit_done:
+            self._cmd(0.0,0.0)
+            return
         if not self.odom_ready or self.scan is None:
             return
 
@@ -332,6 +336,54 @@ class TangentBugNode(Node):
         if right < 0.5 and left > 0.5:
             return 'right'
         return 'right' if heading_error > 0 else 'left'
+    # def _choose_wall_side(self, gx: float, gy: float) -> str:
+    #     """
+    #     Choose wall-following side with stronger priority on the direction
+    #     of the next waypoint/goal.
+
+    #     Idea:
+    #     - If the waypoint is clearly to the left, prefer following the left side.
+    #     - If the waypoint is clearly to the right, prefer following the right side.
+    #     - Only override this decision if the preferred side is much more blocked
+    #     than the opposite side.
+    #     """
+
+    #     left = self._finite_range_or_max(self._min_range(35, 125))
+    #     right = self._finite_range_or_max(self._min_range(-125, -35))
+
+    #     front_left = self._finite_range_or_max(self._min_range(5, 60))
+    #     front_right = self._finite_range_or_max(self._min_range(-60, -5))
+
+    #     # Clearance estimation for each side
+    #     left_clearance = min(left, front_left)
+    #     right_clearance = min(right, front_right)
+
+    #     # Direction of the next waypoint in robot frame
+    #     heading_error = _wrap(math.atan2(gy - self.y, gx - self.x) - self.yaw)
+
+    #     # Positive heading_error means the waypoint is to the left.
+    #     # Negative heading_error means the waypoint is to the right.
+    #     if heading_error > math.radians(8.0):
+    #         preferred_side = 'left'
+    #         preferred_clearance = left_clearance
+    #         opposite_clearance = right_clearance
+    #     elif heading_error < -math.radians(8.0):
+    #         preferred_side = 'right'
+    #         preferred_clearance = right_clearance
+    #         opposite_clearance = left_clearance
+    #     else:
+    #         # If the waypoint is almost straight ahead, choose the safer side.
+    #         return 'left' if left_clearance >= right_clearance else 'right'
+
+    #     # Only reject the waypoint-based decision if that side is clearly unsafe.
+    #     # This gives much more weight to the direction of the next waypoint.
+    #     min_safe_clearance = max(self.wall_distance * 0.75, 0.28)
+    #     override_margin = 0.35
+
+    #     if preferred_clearance < min_safe_clearance and opposite_clearance > preferred_clearance + override_margin:
+    #         return 'right' if preferred_side == 'left' else 'left'
+
+    #     return preferred_side
 
     def _follow_wall(self):
         front_wide = self._min_range(-45, 45)

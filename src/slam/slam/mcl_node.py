@@ -108,7 +108,7 @@ class MCLNode(Node):
         # PARÁMETROS DEL FILTRO DE PARTÍCULAS
         # =====================================================
 
-        self.num_particles = 300
+        self.num_particles = 500
         self.particles = np.zeros((self.num_particles, 4))  # x, y, theta, peso
 
         self.num_rays_subsample = 60

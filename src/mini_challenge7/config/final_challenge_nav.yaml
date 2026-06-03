@@ -7,8 +7,8 @@ tangent_bug_node:
     # Closed trajectory:
     # initial pose -> goal_1 -> goal_2 -> goal_3 -> goal_4 -> initial pose.
     waypoints:
-      - -3.30   # WP0 — goal_1
-      - -0.15
+      - -2.30   # WP0 — goal_1
+      - -1.5
       - 1.50    # WP1 — goal_2
       - -0.85
       - -1.85   # WP2 — goal_3
@@ -20,13 +20,24 @@ tangent_bug_node:
       - 1.45    # WP4 — regresa a la posicion inicial cerrada
       - 3.30
 
-    goal_tolerance: 0.22
+      # - -2.30   # WP0 — goal_1
+      # - -1.5
+      # - 1.50    # WP1 — goal_2
+      # - -0.15
+      # - -1.45   # WP2 — goal_3
+      # - 1.0
+      # - 1.35    # WP3 — goal_4
+      # - 1.1
+      # - 3.50    # WP_exit — via-point: fuerza salida al este del laberinto
+      # - 1.80    #           (x=2.8 > Wall_40, y=1.0 < Wall_30 — camino libre)
+
+    goal_tolerance: 0.05
     max_linear_speed: 0.22
-    max_angular_speed: 0.70
+    max_angular_speed: 0.30
     obstacle_threshold: 0.35
     wall_distance: 0.35
     front_half_angle_deg: 30.0
-    goal_cone_deg: 10.0           # reducido de 20: Wall_40 top queda fuera del cono hacia WP_exit
+    goal_cone_deg: 27.0
     discontinuity_threshold: 0.35
     min_tangent_dist: 0.20
     bf_exit_margin: 0.10
