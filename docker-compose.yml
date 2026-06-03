@@ -23,8 +23,7 @@ x-base: &base                             # bloque reutilizable con config comú
     - PASSWD=robotics
     - DISPLAY=:1
   volumes:
-    - /home/kim/puzzlebot-pallet-loader:/home/robotics/puzzlebot-pallet-loader
-    - /home/kim/irs_tec/m4_interfaces:/home/robotics/m4_interfaces
+    - .:/home/robotics/puzzlebot-pallet-loader
     - /tmp/.X11-unix:/tmp/.X11-unix
     - /dev/shm:/dev/shm
   devices:
