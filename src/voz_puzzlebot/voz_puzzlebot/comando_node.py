@@ -34,7 +34,7 @@ class VoiceCommandNode(Node):
     MIN_FRAMES  = 4
 
     # ── Detección de silencio ────────────────────────────────────
-    RMS_SILENCIO    = 0.0001  # umbral de energía para detectar voz
+    RMS_SILENCIO    = 0.02  # umbral de energía para detectar voz
     DURACION_CHUNK  = 0.1    # segundos por chunk (~100ms)
     CHUNKS_SILENCIO = 6      # chunks silenciosos para cortar (~600ms)
     CHUNKS_VOZ_MIN  = 3      # chunks mínimos con voz para procesar (~300ms)
@@ -72,6 +72,7 @@ class VoiceCommandNode(Node):
         # ── Estado interno ───────────────────────────────────────
         self._escuchando      = False
         self._buffer_chunks   = []
+        self._pre_buffer      = []   # últimos chunks antes de detectar voz
         self._chunks_silencio = 0
         self._chunks_voz      = 0
         self._lock            = threading.Lock()
@@ -85,6 +86,7 @@ class VoiceCommandNode(Node):
         self._escuchando = True
         self._stop_grabacion.clear()
         self._buffer_chunks   = []
+        self._pre_buffer      = []
         self._chunks_silencio = 0
         self._chunks_voz      = 0
 
@@ -112,7 +114,6 @@ class VoiceCommandNode(Node):
         self.get_logger().info("Hilo de grabación activo.")
 
         while not self._stop_grabacion.is_set():
-            # Grabar un chunk de audio
             chunk = sd.rec(
                 samples_por_chunk,
                 samplerate=self.FS,
@@ -128,6 +129,10 @@ class VoiceCommandNode(Node):
 
             with self._lock:
                 if hay_voz:
+                    if self._chunks_voz == 0 and self._pre_buffer:
+                        # primer chunk con voz — prependear onset capturado
+                        self._buffer_chunks.extend(self._pre_buffer)
+                    self._pre_buffer      = []
                     self._buffer_chunks.append(chunk)
                     self._chunks_voz      += 1
                     self._chunks_silencio  = 0
@@ -148,8 +153,14 @@ class VoiceCommandNode(Node):
 
                             # Limpiar buffer
                             self._buffer_chunks   = []
+                            self._pre_buffer      = []
                             self._chunks_silencio = 0
                             self._chunks_voz      = 0
+                    else:
+                        # acumular pre-roll: máximo 2 chunks (200ms antes de voz)
+                        self._pre_buffer.append(chunk)
+                        if len(self._pre_buffer) > 2:
+                            self._pre_buffer.pop(0)
 
         self.get_logger().info("Hilo de grabación terminado.")
 
@@ -162,11 +173,14 @@ class VoiceCommandNode(Node):
                 self.get_logger().warn("Audio demasiado corto, descartado.")
                 return
 
-            # 2. MFCC
-            mfcc = librosa.feature.mfcc(
+            # 2. MFCC + delta + delta-delta
+            mfcc   = librosa.feature.mfcc(
                 y=audio_trim, sr=self.FS,
                 n_mfcc=self.N_MFCC, hop_length=self.HOP_LENGTH
-            ).T
+            )
+            delta1 = librosa.feature.delta(mfcc)
+            delta2 = librosa.feature.delta(mfcc, order=2)
+            mfcc   = np.vstack([mfcc, delta1, delta2]).T  # (n_frames, N_MFCC*3)
 
             # 3. Cuantización vectorial
             O = self.kmeans.predict(mfcc).tolist()

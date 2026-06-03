@@ -7,6 +7,8 @@ Etapas:
     2. Cuantización vectorial de todas las grabaciones
     3. Inicialización de los 10 modelos HMM (topología Bakis left-to-right)
     4. Entrenamiento por segmentación lineal y conteos directos (hold-out 80/20)
+       - Este paso no ejecuta el algoritmo de Viterbi; las observaciones se asignan a segmentos lineales
+         de estado y se acumulan conteos directos para A, B y pi.
 
 Archivos generados:
     codebook_256.pkl
@@ -31,6 +33,7 @@ EPSILON     = 1e-6
 BASE_DIR    = "DATASET"
 PALABRAS    = ["start", "stop", "lift", "drop", "left",
                "right", "forward", "back", "fast", "slow"]
+PALABRAS_IMPRESION = ["start", "stop", "lift"]
 
 FILE_CODEBOOK       = "codebook_256.pkl"
 FILE_SEQUENCES      = "secuencias_cuantizadas.pkl"
@@ -61,10 +64,12 @@ for word in os.listdir(BASE_DIR):
         path = os.path.join(word_dir, filename)
         y, sr = librosa.load(path, sr=FS)
         y_trimmed, _ = librosa.effects.trim(y, top_db=20)
-        mfcc = librosa.feature.mfcc(
+        mfcc   = librosa.feature.mfcc(
             y=y_trimmed, sr=sr, n_mfcc=N_MFCC, hop_length=HOP_LENGTH
         )
-        mfcc_frames = mfcc.T  # shape: (n_frames, N_MFCC)
+        delta1 = librosa.feature.delta(mfcc)
+        delta2 = librosa.feature.delta(mfcc, order=2)
+        mfcc_frames = np.vstack([mfcc, delta1, delta2]).T  # (n_frames, N_MFCC*3)
 
         todos_los_frames.append(mfcc_frames)
         dataset_estructurado[word].append({
@@ -145,6 +150,9 @@ print("\n" + "=" * 60)
 print("ETAPA 4: Entrenamiento HMM — Segmentación Lineal y Suavizado")
 print("=" * 60)
 
+# Guardar copia de A inicial antes de que el entrenamiento la sobreescriba
+A_iniciales = {p: modelos_hmm[p]["A"].copy() for p in PALABRAS_IMPRESION}
+
 for palabra, grabaciones in secuencias_finales.items():
     print(f"-> Entrenando modelo para la palabra: '{palabra.upper()}'")
 
@@ -203,6 +211,18 @@ for palabra, grabaciones in secuencias_finales.items():
 with open(FILE_MODELS_TRAINED, 'wb') as f:
     pickle.dump(modelos_hmm, f)
 print(f"\n[✓] Modelos entrenados guardados en '{FILE_MODELS_TRAINED}'")
+
+# ── Comparación A inicial vs. A entrenada ───────────────────────────
+print("\n" + "=" * 60)
+print("COMPARACIÓN: Matriz A — Inicial vs. Entrenada")
+print("=" * 60)
+for p in PALABRAS_IMPRESION:
+    print(f"\n--- {p.upper()} ---")
+    print("A inicial (topología Bakis 50/50):")
+    print(np.round(A_iniciales[p], 4))
+    print("A entrenada (a partir de duraciones reales):")
+    print(np.round(modelos_hmm[p]["A"], 4))
+    print(f"Suma filas: {modelos_hmm[p]['A'].sum(axis=1)}")
 
 # ── Validación rápida ────────────────────────────────────────────────
 ejemplo_p = "lift"
