@@ -13,9 +13,11 @@ setup(
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
         ('share/' + package_name, ['best.pt']),
-        ('share/' + package_name + '/launch', ['launch/perception.launch.py']),
         (os.path.join('share', package_name, 'launch'), glob('launch/*.py')),
         (os.path.join('share', package_name, 'config'), glob('config/*.yaml')),
+        # Modelos HMM de reconocimiento de voz
+        (os.path.join('lib', 'python3.10', 'site-packages', package_name, 'models'),
+            glob(package_name + '/models/*.pkl')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -37,6 +39,7 @@ setup(
             'odometry_node = puzzlebot_pallet_loader.odometry_node:main',
             'ekf_aruco_localization_node = puzzlebot_pallet_loader.ekf_aruco_localization_node:main',
             'aruco_detector_node = puzzlebot_pallet_loader.aruco_detector_node:main',
+            'fsm_control_node = puzzlebot_pallet_loader.fsm_control_node:main',
         ],
     },
 )
