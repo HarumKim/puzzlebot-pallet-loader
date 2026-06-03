@@ -11,12 +11,12 @@ tangent_bug_node:
       - -0.15
       - 1.50    # WP1 — goal_2
       - -0.85
-      - -1.45   # WP2 — goal_3
+      - -1.85   # WP2 — goal_3
       - 0.0
       - 1.25    # WP3 — goal_4
       - 1.35
-      - 2.80    # WP_exit — via-point: fuerza salida al este del laberinto
-      - 1.00    #           (x=2.8 > Wall_40, y=1.0 < Wall_30 — camino libre)
+      - 3.50    # WP_exit — via-point este del laberinto
+      - 1.80
       - 1.45    # WP4 — regresa a la posicion inicial cerrada
       - 3.30
 

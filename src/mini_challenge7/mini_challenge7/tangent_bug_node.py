@@ -82,7 +82,7 @@ class TangentBugNode(Node):
         self._prev_pos = None
 
         self.wp_idx = 0
-        self.lap_count = 0
+        self.circuit_done = False
         self.state = 'MOTION_TO_GOAL'
         self.wall_side = 'right'
         self.d_bf = float('inf')
@@ -115,6 +115,10 @@ class TangentBugNode(Node):
 
     def _loop(self):
         if not self.odom_ready or self.scan is None:
+            return
+
+        if self.circuit_done:
+            self._cmd(0.0, 0.0)
             return
 
         if self.wait_for_localization and not self.localization_ready:
@@ -375,9 +379,9 @@ class TangentBugNode(Node):
     def _advance_waypoint(self):
         self.wp_idx += 1
         if self.wp_idx >= len(self.waypoints):
-            self.wp_idx = 0
-            self.lap_count += 1
-            self.get_logger().info(f'Lap {self.lap_count} complete.')
+            self.circuit_done = True
+            self.get_logger().info('Circuit complete — robot stopped.')
+            return
         self._exit_bf()
 
     def _min_range(self, min_deg: float, max_deg: float) -> float:

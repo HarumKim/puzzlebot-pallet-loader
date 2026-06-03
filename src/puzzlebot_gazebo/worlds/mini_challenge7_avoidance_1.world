@@ -73,7 +73,7 @@
     <include>
       <name>goal_3</name>
       <uri>model://goal_marker_3</uri>
-      <pose>-1.45 0.0 0.001 0 0 0</pose>
+      <pose>-1.85 0.0 0.001 0 0 0</pose>
     </include>
 
     <!-- Goal 4: se queda como estaba -->
@@ -81,6 +81,13 @@
       <name>goal_4</name>
       <uri>model://goal_marker_4</uri>
       <pose>1.25 1.35 0.001 0 0 0</pose>
+    </include>
+
+    <!-- WP_exit: via-point de salida al este del laberinto -->
+    <include>
+      <name>goal_exit</name>
+      <uri>model://goal_marker_5</uri>
+      <pose>3.5 1.80 0.001 0 0 0</pose>
     </include>
 
     <!-- ArUco landmarks for EKF localization, distributed along the new route. -->
@@ -97,7 +104,7 @@
     <include>
       <name>marker_2</name>
       <uri>model://aruco_marker_2</uri>
-      <pose>-1.90 0 0.091 0 0 0.0</pose>
+      <pose>-2.10 0 0.091 0 0 0.0</pose>
     </include>
     <include>
       <name>marker_3</name>

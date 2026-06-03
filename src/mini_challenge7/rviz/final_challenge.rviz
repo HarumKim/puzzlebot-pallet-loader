@@ -61,7 +61,7 @@ Visualization Manager:
           Scale: 1
           Value: true
         Value: true
-      Enabled: true
+      Enabled: false
       Keep: 200
       Name: EKF Odometry
       Position Tolerance: 0.1
@@ -162,7 +162,7 @@ Visualization Manager:
       Yaw: 0.78
     Saved: ~
 Window Geometry:
-  Height: 1000
-  Width: 1600
-  X: 60
-  Y: 40
+  Height: 800
+  Width: 1200
+  X: 100
+  Y: 50
