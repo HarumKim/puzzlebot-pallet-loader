@@ -176,7 +176,7 @@ module forklift_controller (
 
     localparam integer PWM_PERIOD = 1350;
     localparam integer DUTY_STOP  = 0;
-    localparam integer DUTY_RUN   = 950;   // 850 = Around 63% duty cycle
+    localparam integer DUTY_RUN   = 1050;   // 850 = Around 63% duty cycle
 
     reg [10:0] pwm_counter = 11'd0;
     reg [10:0] duty_cycle = DUTY_STOP;
