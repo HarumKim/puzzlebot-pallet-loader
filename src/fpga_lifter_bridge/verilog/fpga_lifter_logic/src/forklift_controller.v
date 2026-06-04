@@ -22,7 +22,7 @@ module forklift_controller (
     input wire upper_ir,    // Top sensor
 
     // Debug LEDs
-    output reg [5:0] leds
+    output wire [5:0] leds
 );
 
     // ============================================================
@@ -63,7 +63,9 @@ module forklift_controller (
     localparam ST_ERROR     = 3'd6;
 
     reg [2:0] state = ST_IDLE;
+    reg [5:0] leds_state;
 
+    assign leds = ~leds_state;
     reg [7:0] current_cmd = CMD_STOP;
     reg [7:0] status_byte = STATUS_IDLE;
 
@@ -174,7 +176,7 @@ module forklift_controller (
 
     localparam integer PWM_PERIOD = 1350;
     localparam integer DUTY_STOP  = 0;
-    localparam integer DUTY_RUN   = 850;   // Around 63% duty cycle
+    localparam integer DUTY_RUN   = 950;   // 850 = Around 63% duty cycle
 
     reg [10:0] pwm_counter = 11'd0;
     reg [10:0] duty_cycle = DUTY_STOP;
@@ -260,7 +262,7 @@ module forklift_controller (
             dir_out     <= 1'b0;
             brake_out   <= 1'b1;
             status_byte <= STATUS_IDLE;
-            leds        <= 6'b000001;
+            leds_state  <= 6'b000001;
         end else begin
 
             case (state)
@@ -270,9 +272,10 @@ module forklift_controller (
                 // ------------------------------------------------
                 ST_IDLE: begin
                     duty_cycle  <= DUTY_STOP;
-                    brake_out   <= 1'b1;
+                    dir_out     <= 1'b0;
+                    brake_out   <= 1'b0;
                     status_byte <= STATUS_IDLE;
-                    leds        <= 6'b000001;
+                    leds_state  <= 6'b000001;
 
                     if (cmd_received) begin
                         if (current_cmd == CMD_LIFT && !upper_limit_reached) begin
@@ -291,11 +294,11 @@ module forklift_controller (
                 // LIFTING
                 // ------------------------------------------------
                 ST_LIFTING: begin
-                    dir_out     <= 1'b1;       // Adjust if motor direction is inverted
-                    brake_out   <= 1'b0;
-                    duty_cycle  <= DUTY_RUN;
+                    dir_out     <= 1'b1;       // L298N IN1
+                    brake_out   <= 1'b0;       // L298N IN2
+                    duty_cycle  <= DUTY_RUN;   // L298N ENA receives PWM
                     status_byte <= STATUS_MOVING_UP;
-                    leds        <= 6'b000010;
+                    leds_state  <= 6'b000010;
 
                     if (upper_limit_reached) begin
                         state <= ST_UP_LIMIT;
@@ -312,11 +315,11 @@ module forklift_controller (
                 // LOWERING
                 // ------------------------------------------------
                 ST_LOWERING: begin
-                    dir_out     <= 1'b0;       // Adjust if motor direction is inverted
-                    brake_out   <= 1'b0;
-                    duty_cycle  <= DUTY_RUN;
+                    dir_out     <= 1'b0;       // L298N IN1
+                    brake_out   <= 1'b1;       // L298N IN2
+                    duty_cycle  <= DUTY_RUN;   // L298N ENA receives PWM
                     status_byte <= STATUS_MOVING_DOWN;
-                    leds        <= 6'b000100;
+                    leds_state  <= 6'b000100;
 
                     if (lower_limit_reached) begin
                         state <= ST_LOW_LIMIT;
@@ -334,9 +337,10 @@ module forklift_controller (
                 // ------------------------------------------------
                 ST_HOLDING: begin
                     duty_cycle  <= DUTY_STOP;
-                    brake_out   <= 1'b1;
+                    dir_out     <= 1'b0;
+                    brake_out   <= 1'b0;
                     status_byte <= STATUS_HOLDING;
-                    leds        <= 6'b001000;
+                    leds_state  <= 6'b001000;
 
                     if (cmd_received) begin
                         if (current_cmd == CMD_LIFT && !upper_limit_reached) begin
@@ -354,9 +358,10 @@ module forklift_controller (
                 // ------------------------------------------------
                 ST_UP_LIMIT: begin
                     duty_cycle  <= DUTY_STOP;
-                    brake_out   <= 1'b1;
+                    dir_out     <= 1'b0;
+                    brake_out   <= 1'b0;
                     status_byte <= STATUS_UP_LIMIT;
-                    leds        <= 6'b010000;
+                    leds_state  <= 6'b010000;
 
                     if (cmd_received) begin
                         if (current_cmd == CMD_LOWER && !lower_limit_reached) begin
@@ -374,9 +379,10 @@ module forklift_controller (
                 // ------------------------------------------------
                 ST_LOW_LIMIT: begin
                     duty_cycle  <= DUTY_STOP;
-                    brake_out   <= 1'b1;
+                    dir_out     <= 1'b0;
+                    brake_out   <= 1'b0;
                     status_byte <= STATUS_LOW_LIMIT;
-                    leds        <= 6'b100000;
+                    leds_state  <= 6'b100000;
 
                     if (cmd_received) begin
                         if (current_cmd == CMD_LIFT && !upper_limit_reached) begin
@@ -394,9 +400,10 @@ module forklift_controller (
                 // ------------------------------------------------
                 ST_ERROR: begin
                     duty_cycle  <= DUTY_STOP;
-                    brake_out   <= 1'b1;
+                    dir_out     <= 1'b0;
+                    brake_out   <= 1'b0;
                     status_byte <= STATUS_ERROR;
-                    leds        <= 6'b111111;
+                    leds_state  <= 6'b111111;
 
                     if (cmd_received && current_cmd == CMD_STOP) begin
                         state <= ST_IDLE;
@@ -411,7 +418,7 @@ module forklift_controller (
                     duty_cycle  <= DUTY_STOP;
                     brake_out   <= 1'b1;
                     status_byte <= STATUS_ERROR;
-                    leds        <= 6'b111111;
+                    leds_state  <= 6'b111111;
                 end
 
             endcase
