@@ -125,11 +125,28 @@ def main(args=None):
 
     try:
         rclpy.spin(node)
-    except KeyboardInterrupt:
-        pass
 
-    node.destroy_node()
-    rclpy.shutdown()
+    except KeyboardInterrupt:
+        node.get_logger().info('Ctrl+C detected. Closing SPI node...')
+
+    except Exception as e:
+        node.get_logger().error(f'Unexpected error: {e}')
+
+    finally:
+        try:
+            if node.spi is not None:
+                node.spi.close()
+                node.get_logger().info('SPI closed.')
+        except Exception:
+            pass
+
+        try:
+            node.destroy_node()
+        except Exception:
+            pass
+
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == '__main__':

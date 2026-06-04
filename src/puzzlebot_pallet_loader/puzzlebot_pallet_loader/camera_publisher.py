@@ -29,7 +29,7 @@ class CameraPublisher(Node):
         super().__init__('camera_publisher')
         Gst.init(None)
 
-        self.declare_parameter('udp_host', '10.42.0.160')
+        self.declare_parameter('udp_host', '10.42.0.67') #dato dentro de la jetson '10.22.215.196'
         self.declare_parameter('udp_port', 5004)
         self.declare_parameter('ros_fps', 25)
         self.declare_parameter('jpeg_quality', 80)
@@ -122,7 +122,6 @@ def main(args=None):
 
     try:
         rclpy.spin(camera_publisher)
-
     except KeyboardInterrupt:
         pass
 
