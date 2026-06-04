@@ -32,7 +32,7 @@ from geometry_msgs.msg import Twist
 class FSMControlNode(Node):
 
     # ── Comandos válidos ─────────────────────────────────────────
-    COMANDOS = {"stop", "start", "lift", "drop"}
+    COMANDOS = {"stop", "start", "lift", "drop", "forward"}
 
     # ── Definición de estados ────────────────────────────────────
     ESTADO_IDLE    = "idle"
@@ -76,6 +76,7 @@ class FSMControlNode(Node):
     def _nav_callback(self, msg: Twist):
         if self._mission_active:
             self._nav_twist = msg
+            self.pub_cmd_vel.publish(msg)  # reenvío inmediato, sin esperar el timer
 
     # ════════════════════════════════════════════════════════════
     # COMANDO DE VOZ — máquina de estados
@@ -93,7 +94,7 @@ class FSMControlNode(Node):
 
         if comando == "stop":
             self._ejecutar_stop()
-        elif comando == "start":
+        elif comando in ("start", "forward"):
             self._ejecutar_start()
         elif comando == "lift":
             self._ejecutar_lift()

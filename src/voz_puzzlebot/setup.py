@@ -15,7 +15,7 @@ setup(
         # --- NUEVO: Incluir todos los archivos de tu carpeta Voz_puzzlebot al compilar ---
         (os.path.join('share', package_name, 'voz_puzzlebot'), glob('voz_puzzlebot/*.pkl')),
         (os.path.join('lib', 'python3.10', 'site-packages', 'voz_puzzlebot'),
-        ['voz_puzzlebot/codebook_256.pkl','voz_puzzlebot/modelos_hmm_entrenados.pkl',]
+        ['voz_puzzlebot/modelo_voz.pkl',]
     ),
     ],
     install_requires=['setuptools'],
