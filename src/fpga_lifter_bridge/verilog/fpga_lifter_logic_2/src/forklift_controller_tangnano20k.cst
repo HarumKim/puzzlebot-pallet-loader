@@ -1,0 +1,108 @@
+//====================================================
+// Tang Nano 20K - Forklift Controller Pin Constraints
+// Based on the SPI practice wiring that already works
+// with your Jetson-FPGA connection.
+//
+// SPI working practice pins:
+// CS    -> 48
+// MISO  -> 26
+// MOSI  -> 25
+// SCK   -> 77
+// clk   -> 4
+// rst_n -> 41
+//
+// Final confirmed IR pins:
+// lower_ir -> 49
+// upper_ir -> 86
+// Both IR sensors: free = 1, detected = 0
+//====================================================
+
+
+//----------------------------------------------------
+// SPI / Control signals
+//----------------------------------------------------
+
+IO_LOC "cs_n" 48;
+IO_PORT "cs_n" IO_TYPE=LVCMOS33 PULL_MODE=NONE;
+
+IO_LOC "miso" 26;
+IO_PORT "miso" IO_TYPE=LVCMOS33 PULL_MODE=NONE;
+
+IO_LOC "mosi" 25;
+IO_PORT "mosi" IO_TYPE=LVCMOS33 PULL_MODE=NONE;
+
+IO_LOC "sck" 77;
+IO_PORT "sck" IO_TYPE=LVCMOS33 PULL_MODE=NONE;
+
+
+//----------------------------------------------------
+// System clock
+//----------------------------------------------------
+IO_LOC "clk" 4;
+IO_PORT "clk" IO_TYPE=LVCMOS33 PULL_MODE=NONE;
+
+
+//----------------------------------------------------
+// Reset
+//----------------------------------------------------
+IO_LOC "rst_n" 41;
+IO_PORT "rst_n" IO_TYPE=LVCMOS33 PULL_MODE=NONE;
+
+
+//----------------------------------------------------
+// Debug LEDs
+//----------------------------------------------------
+IO_LOC "leds[0]" 15;
+IO_PORT "leds[0]" IO_TYPE=LVCMOS33 PULL_MODE=NONE;
+
+IO_LOC "leds[1]" 16;
+IO_PORT "leds[1]" IO_TYPE=LVCMOS33 PULL_MODE=NONE;
+
+IO_LOC "leds[2]" 17;
+IO_PORT "leds[2]" IO_TYPE=LVCMOS33 PULL_MODE=NONE;
+
+IO_LOC "leds[3]" 18;
+IO_PORT "leds[3]" IO_TYPE=LVCMOS33 PULL_MODE=NONE;
+
+IO_LOC "leds[4]" 19;
+IO_PORT "leds[4]" IO_TYPE=LVCMOS33 PULL_MODE=NONE;
+
+IO_LOC "leds[5]" 20;
+IO_PORT "leds[5]" IO_TYPE=LVCMOS33 PULL_MODE=NONE;
+
+
+//----------------------------------------------------
+// L298N motor driver outputs
+//----------------------------------------------------
+
+// L298N ENA
+IO_LOC "pwm_out" 29;
+IO_PORT "pwm_out" IO_TYPE=LVCMOS33 PULL_MODE=NONE;
+
+// L298N IN1
+IO_LOC "dir_out" 27;
+IO_PORT "dir_out" IO_TYPE=LVCMOS33 PULL_MODE=NONE;
+
+// L298N IN2
+IO_LOC "brake_out" 28;
+IO_PORT "brake_out" IO_TYPE=LVCMOS33 PULL_MODE=NONE;
+
+
+//----------------------------------------------------
+// Encoder inputs
+//----------------------------------------------------
+IO_LOC "enc_a" 30;
+IO_PORT "enc_a" IO_TYPE=LVCMOS33 PULL_MODE=UP;
+
+IO_LOC "enc_b" 31;
+IO_PORT "enc_b" IO_TYPE=LVCMOS33 PULL_MODE=UP;
+
+
+//----------------------------------------------------
+// IR limit sensors
+//----------------------------------------------------
+IO_LOC "lower_ir" 49;
+IO_PORT "lower_ir" IO_TYPE=LVCMOS33 PULL_MODE=UP;
+
+IO_LOC "upper_ir" 86;
+IO_PORT "upper_ir" IO_TYPE=LVCMOS33 PULL_MODE=UP;
