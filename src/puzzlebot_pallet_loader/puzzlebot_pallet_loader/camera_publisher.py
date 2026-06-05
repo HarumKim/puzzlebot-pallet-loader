@@ -45,9 +45,9 @@ class CameraPublisher(Node):
 
         pipeline_str = (
             "nvarguscamerasrc sensor-mode=4 ee-mode=0 tnr-mode=0 ! "
-            "video/x-raw(memory:NVMM),width=640,height=480,framerate=30/1 ! "
+            "video/x-raw(memory:NVMM),width=1280,height=720,framerate=60/1 ! "
             "nvvidconv flip-method=0 ! "
-            "video/x-raw(memory:NVMM),width=640,height=480 ! "
+            "video/x-raw(memory:NVMM),width=640,height=480,format=NV12 ! "
             "tee name=t "
             f"t. ! queue ! nvv4l2h264enc bitrate=1500000 insert-sps-pps=true iframeinterval=30 ! "
             f"h264parse ! mpegtsmux ! udpsink host={udp_host} port={udp_port} sync=false "
