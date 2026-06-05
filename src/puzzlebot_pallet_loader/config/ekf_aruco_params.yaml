@@ -22,16 +22,16 @@ ekf_aruco_localization_node:
 
     # Ruido de medición R — qué tanto confiar en las correcciones ArUco
     # Más bajo = más confianza en ArUco
-    # 0.05 era demasiado agresivo, 0.25 las ignoraba, 0.10 es el balance
-    r_range: 0.10
-    r_bearing: 0.10
+    # 0.25 suaviza las correcciones ArUco para evitar brincos mientras navega.
+    r_range: 0.25
+    r_bearing: 0.25
 
     mahalanobis_threshold: 9.21
 
     # Topics
     ekf_odom_topic: "/ekf_odom"
     aruco_topic: "/aruco_measurements"
-    use_joint_states: true
+    use_joint_states: false
     joint_states_topic: "/joint_states"
     left_wheel_joint: "wheel_left_joint"
     right_wheel_joint: "wheel_right_joint"
@@ -44,28 +44,34 @@ ekf_aruco_localization_node:
     laser_frame: "laser"
 
     # Pose inicial del robot
-    initial_x: 0.25
-    initial_y: 0.25
-    initial_yaw: 0.0
+    initial_x: 0.0
+    initial_y: 0.0
+    initial_yaw: 3.08
     initial_cov_x: 0.01
     initial_cov_y: 0.01
-    initial_cov_yaw: 0.01
+    initial_cov_yaw: 0.10
 
     # Mapa de landmarks ArUco
-    # Debe coincidir EXACTAMENTE con las poses del .world
-    marker_ids:   [0,    1,    2,    3]
-    marker_x:     [4.58, 4.80, 0.65, 0.05]
-    marker_y:     [0.05, 3.05, 3.65, 0.65]
-    marker_theta: [1.5708, 3.141592654, 4.71239, 0.0]
+    # Mismo frame que config/aruco_landmarks.yaml.
+    # marker_theta se mantiene en 0.0 porque el EKF actual solo usa x/y.
+    marker_ids:   [0,     1,     2,     3,    4,     5,     6,      7,      8,      9,     10]
+    marker_x:     [-1.78, -2.75, -1.78, 1.08, 1.08, -0.41, -0.41,  -1.61, -1.61,  2.06,  2.06]
+    marker_y:     [-1.84,  0.28,  1.84, 1.84, -1.84, 0.54, -0.64,  -0.54,  0.64, -1.47,  1.06]
+    marker_theta: [0.0,   0.0,   0.0,  0.0,  0.0,  0.0,  0.0,    0.0,    0.0,   0.0,   0.0]
 
 # ── ArUco Detector Node ───────────────────────────────────────────────────────
 aruco_detector_node:
   ros__parameters:
-    aruco_dictionary: 0
-    marker_size: 0.15
-    camera_topic: "/camera"
-    camera_info_topic: "/camera_info"
+    camera_topic: "/camera/image_raw/compressed"
+    calib_file: "/home/valeria/puzzlebot-pallet-loader/src/camera_dataset/camera_calibration.npz"
+    marker_size: 0.08
+    aruco_dictionary: "DICT_4X4_50"
+    allowed_marker_ids: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 
     camera_x_offset: 0.08
     camera_y_offset: 0.0
     camera_yaw_offset: 0.0
+
+    publish_annotated_image: true
+    annotated_image_topic: "/aruco/annotated"
+    measurements_topic: "/aruco_measurements"

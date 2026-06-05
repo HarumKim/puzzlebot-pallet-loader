@@ -1,5 +1,9 @@
 import heapq
 import math
+import sys
+import termios
+import threading
+import tty
 
 import rclpy
 from rclpy.node import Node
@@ -11,10 +15,10 @@ from sensor_msgs.msg import LaserScan
 
 DEFAULT_WAYPOINTS = [3.5, 2.7]
 
-MAX_LIN = 0.25
+MAX_LIN = 0.04
 
-LOCALIZATION_COV_THRESHOLD = 0.10
-MAX_ANG = 0.60
+LOCALIZATION_COV_THRESHOLD = 0.50
+MAX_ANG = 0.05
 
 KP_ANG = 2.0
 KP_LIN = 0.5
@@ -32,6 +36,10 @@ HEADING_TOL = 45
 CORNER_CLEARANCE = 0.60
 WALL_FOLLOW_MIN_DIST = 0.50
 REPLAN_DISTANCE = 1.20
+
+# LiDAR montado 180° respecto al frente del robot.
+# Todos los ángulos del scan se rotan por este offset antes de usarse.
+SCAN_ANGLE_OFFSET_DEG = 180.0
 
 class HybridAStarBug0Node(Node):
     def __init__(self):
@@ -108,12 +116,17 @@ class HybridAStarBug0Node(Node):
         self._dynamic_obstacles = []  # (x, y) world coords of unknown obstacles found by Bug0
         self._unknown_obs_frames = 0  # consecutive frames with unknown obstacle in front
 
+        self._paused = False
+        self._kb_thread = threading.Thread(target=self._keyboard_listener, daemon=True)
+        self._kb_thread.start()
+
         self.create_timer(0.05, self._loop)
 
         self.get_logger().info(
             f'Hybrid A* + Bug0 started. Waypoints={self.waypoints}, '
             f'obstacles={len(self._obstacles) // 4}'
         )
+        self.get_logger().info('Teclado: ESPACIO = pausar/reanudar | q = salir')
 
     def _odom_cb(self, msg: Odometry):
         p = msg.pose.pose.position
@@ -130,7 +143,31 @@ class HybridAStarBug0Node(Node):
     def _scan_cb(self, msg: LaserScan):
         self._scan = msg
 
+    def _keyboard_listener(self):
+        fd = sys.stdin.fileno()
+        old = termios.tcgetattr(fd)
+        try:
+            tty.setraw(fd)
+            while rclpy.ok():
+                ch = sys.stdin.read(1)
+                if ch == ' ':
+                    self._paused = not self._paused
+                    state = 'PAUSADO' if self._paused else 'REANUDADO'
+                    self.get_logger().info(f'[TECLADO] Robot {state}')
+                    if self._paused:
+                        self._cmd(0.0, 0.0)
+                elif ch in ('q', 'Q'):
+                    self.get_logger().info('[TECLADO] Saliendo...')
+                    self._cmd(0.0, 0.0)
+                    rclpy.shutdown()
+                    break
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old)
+
     def _loop(self):
+        if self._paused:
+            return
+
         if not self._odom_ready or self._scan is None:
             return
 
@@ -604,22 +641,24 @@ class HybridAStarBug0Node(Node):
 
     def _min_range(self, a_min_deg: float, a_max_deg: float):
         scan = self._scan
-        a_min = math.radians(a_min_deg)
-        a_max = math.radians(a_max_deg)
+        offset = math.radians(SCAN_ANGLE_OFFSET_DEG)
+        a_min = _wrap(math.radians(a_min_deg) + offset)
+        a_max = _wrap(math.radians(a_max_deg) + offset)
 
-        i0 = round((a_min - scan.angle_min) / scan.angle_increment)
-        i1 = round((a_max - scan.angle_min) / scan.angle_increment)
+        n = len(scan.ranges)
 
-        i0 = max(0, min(i0, len(scan.ranges) - 1))
-        i1 = max(0, min(i1, len(scan.ranges) - 1))
+        def _to_idx(a):
+            return max(0, min(round((a - scan.angle_min) / scan.angle_increment), n - 1))
 
-        if i0 > i1:
-            i0, i1 = i1, i0
+        def _valid(r):
+            return math.isfinite(r) and scan.range_min < r < scan.range_max
 
-        vals = [
-            r for r in scan.ranges[i0:i1 + 1]
-            if math.isfinite(r) and scan.range_min < r < scan.range_max
-        ]
+        if a_min <= a_max:
+            i0, i1 = _to_idx(a_min), _to_idx(a_max)
+            vals = [r for r in scan.ranges[i0:i1 + 1] if _valid(r)]
+        else:
+            # El rango cruza el límite ±π
+            vals = [r for r in scan.ranges[_to_idx(a_min):] + scan.ranges[:_to_idx(a_max) + 1] if _valid(r)]
 
         return min(vals) if vals else float('inf')
     
@@ -635,31 +674,29 @@ class HybridAStarBug0Node(Node):
             return None
 
         scan = self._scan
+        offset = math.radians(SCAN_ANGLE_OFFSET_DEG)
+        a_min = _wrap(-self._known_obstacle_angle_window + offset)
+        a_max = _wrap(self._known_obstacle_angle_window + offset)
 
-        a_min = -self._known_obstacle_angle_window
-        a_max = self._known_obstacle_angle_window
+        n = len(scan.ranges)
 
-        i0 = round((a_min - scan.angle_min) / scan.angle_increment)
-        i1 = round((a_max - scan.angle_min) / scan.angle_increment)
+        def _to_idx(a):
+            return max(0, min(round((a - scan.angle_min) / scan.angle_increment), n - 1))
 
-        i0 = max(0, min(i0, len(scan.ranges) - 1))
-        i1 = max(0, min(i1, len(scan.ranges) - 1))
-
-        if i0 > i1:
-            i0, i1 = i1, i0
+        if a_min <= a_max:
+            indices = range(_to_idx(a_min), _to_idx(a_max) + 1)
+        else:
+            indices = list(range(_to_idx(a_min), n)) + list(range(0, _to_idx(a_max) + 1))
 
         best_range = float('inf')
         best_index = None
 
-        for idx in range(i0, i1 + 1):
+        for idx in indices:
             r = scan.ranges[idx]
-
             if not math.isfinite(r):
                 continue
-
             if not (scan.range_min < r < scan.range_max):
                 continue
-
             if r < best_range:
                 best_range = r
                 best_index = idx
@@ -667,14 +704,13 @@ class HybridAStarBug0Node(Node):
         if best_index is None:
             return None
 
-        # Angle of the detected point in the robot/LiDAR frame
-        local_angle = scan.angle_min + best_index * scan.angle_increment
+        # Ángulo en frame del láser → convertir a frame del robot con offset
+        laser_angle = scan.angle_min + best_index * scan.angle_increment
+        local_angle = laser_angle + math.radians(SCAN_ANGLE_OFFSET_DEG)
 
-        # Point in robot local frame
         local_x = best_range * math.cos(local_angle)
         local_y = best_range * math.sin(local_angle)
 
-        # Transform from robot frame to world frame
         global_x = self.x + local_x * math.cos(self.yaw) - local_y * math.sin(self.yaw)
         global_y = self.y + local_x * math.sin(self.yaw) + local_y * math.cos(self.yaw)
 
@@ -715,7 +751,7 @@ class HybridAStarBug0Node(Node):
         is_known = self._point_is_inside_known_obstacle(px, py)
 
         if is_known:
-            self.get_logger().info(
+            self.get_logger().debug(
                 f'Known obstacle detected at ({px:.2f}, {py:.2f}), '
                 f'distance={distance:.2f} m. Continuing A* path.'
             )

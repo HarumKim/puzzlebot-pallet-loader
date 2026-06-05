@@ -21,7 +21,7 @@ colcon build --packages-select puzzlebot_pallet_loader
 source install/setup.bash
 
 -- CAMBIAR POR IP DE TU COMPU --
-ros2 run puzzlebot_pallet_loader camera_publisher --ros-args -p udp_host:=10.42.0.160
+ros2 run puzzlebot_pallet_loader camera_publisher --ros-args -p udp_host:=10.42.0.67
 """
 
 class CameraPublisher(Node):

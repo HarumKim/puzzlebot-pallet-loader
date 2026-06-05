@@ -1,0 +1,111 @@
+# =============================================================================
+# real_robot_nav_params.yaml
+# Parámetros de navegación para el robot real en la pista.
+#
+# Sistema de coordenadas: origen (0, 0) = tu marca en el centro de la pista.
+#   +X = dirección que el robot mira al arrancar
+#   +Y = izquierda del robot
+#
+# Generado con transform_obstacles_to_new_origin.py a partir del mapa SLAM.
+# =============================================================================
+
+hybrid_a_star_bug0_node:
+  ros__parameters:
+
+    # Lista de waypoints a visitar en orden, en metros desde el origen.
+    # Formato: [x0, y0, x1, y1, ...] — pares (x, y) consecutivos.
+    # Waypoint 1 metro hacia el ArUco #1 (-2.81, 0.18).
+    # Camino recto sin obstáculos entre (0,0) y este punto.
+    waypoints:
+    - -1.00  # WP0 x
+    - 0.06   # WP0 y
+
+    # Distancia en metros a la que se considera que se llegó a un waypoint.
+    # Más grande = el robot para antes de llegar exactamente.
+    goal_tolerance: 0.2
+
+    # Área navegable [xmin, ymin, xmax, ymax] en metros.
+    # El planificador A* no genera rutas fuera de estos límites.
+    # Ajustado para quedar dentro de las paredes físicas del arena
+    # (paredes estimadas por posición de ArUcos: x ≈ -2.81..2.06, y ≈ -1.84..1.84).
+    bounds:
+    - -2.65  # x mínimo (dentro de pared izquierda x≈-2.81)
+    - -1.65  # y mínimo (dentro de pared sur y≈-1.84)
+    - 1.90   # x máximo (dentro de pared derecha x≈2.06)
+    - 1.65   # y máximo (dentro de pared norte y≈1.84)
+
+    # Tamaño de cada celda del grid A* en metros.
+    # Más pequeño = rutas más precisas pero más lento de calcular.
+    resolution: 0.08
+
+    # Radio de inflación alrededor de cada obstáculo en metros.
+    # El robot tiene ~0.18 m de radio, 0.20 m da un pequeño margen de seguridad.
+    inflation_radius: 0.2
+
+    # Cuántos puntos saltar al seguir la ruta A*.
+    # 1 = seguir cada punto, 2 = saltar de a 2 (más suave en curvas).
+    path_stride: 2
+
+    # Tolerancia para reconocer si un obstáculo del LiDAR coincide con uno
+    # conocido del mapa (para no frenar por obstáculos que ya están en el plan).
+    known_obstacle_tolerance: 0.30
+
+    # Ventana angular (grados) alrededor de un obstáculo conocido para
+    # considerar lecturas del LiDAR como parte del mismo obstáculo.
+    known_obstacle_angle_window_deg: 20.0
+
+    # Obstáculos estáticos conocidos de la pista, en metros desde el origen.
+    # Formato: [xmin, ymin, xmax, ymax] por cada obstáculo (4 valores por fila).
+    # Obtenidos del mapa SLAM y transformados a este sistema de coordenadas.
+    obstacles:
+    # Paredes del arena (estimadas por posición de ArUcos en los bordes)
+    # Pared sur (ArUcos #0 y #4 en y=-1.84)
+    - -2.65
+    - -1.84
+    - 1.90
+    - -1.70
+    # Pared norte (ArUcos #2 y #3 en y=1.84)
+    - -2.65
+    - 1.70
+    - 1.90
+    - 1.84
+    # Pared oeste/izquierda (ArUco #1 en x=-2.81)
+    - -2.81
+    - -1.70
+    - -2.65
+    - 1.70
+    # Pared este/derecha (ArUcos #9 y #10 en x=2.06)
+    - 1.90
+    - -1.70
+    - 2.10
+    - 1.70
+    # Obstáculo 0: pared/obstáculo vertical izquierda
+    - -2.637
+    - -0.883
+    - -2.147
+    - 1.467
+    # Obstáculo 1: obstáculo superior central
+    - -1.567
+    - 0.387
+    - -0.197
+    - 0.787
+    # Obstáculo 2: obstáculo medio izquierdo
+    - -1.617
+    - -0.833
+    - -0.347
+    - -0.393
+    # Obstáculo 3: obstáculo medio derecho
+    - 0.343
+    - -0.583
+    - 0.933
+    - 0.587
+    # Obstáculo 4: obstáculo superior derecho
+    - -0.487
+    - 1.567
+    - 0.393
+    - 1.787
+    # Obstáculo 5: obstáculo inferior central
+    - -1.127
+    - -1.883
+    - 0.093
+    - -1.663

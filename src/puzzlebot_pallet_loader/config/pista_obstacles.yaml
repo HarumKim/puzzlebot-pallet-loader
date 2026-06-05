@@ -1,14 +1,5 @@
 hybrid_a_star_bug0_node:
   ros__parameters:
-    # waypoints anteriores:
-    #   - 1.10  # WP0 x
-    #   - 2.9   # WP0 y
-    #   - 4.0   # WP1 x
-    #   - 3.1   # WP1 y
-    #   - 4.0   # WP2 x
-    #   - 0.8   # WP2 y
-    #   - 0.25  # WP3 x
-    #   - 0.25  # WP3 y
 
     waypoints:
       - 0.80       # WP0: esquina superior izquierda

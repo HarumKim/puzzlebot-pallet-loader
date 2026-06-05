@@ -4,15 +4,16 @@ full_navigation.launch.py
 Launch completo: Localización EKF-ArUco + Navegación Híbrida A*-Bug0
 
 Levanta:
-    1. aruco_detector_node       — detecta marcadores ArUco desde /camera
-                                   publica /aruco_measurements
+    1. aruco_detector_node         — detecta ArUcos desde /camera/image_raw/compressed
+                                     publica /aruco_measurements
     2. ekf_aruco_localization_node — predicción EKF con encoders +
-                                   corrección con ArUco → /odom + TF odom→base_link
-    3. hybrid_a_star_bug0_node   — navegación con /odom + /scan → /cmd_vel
+                                     corrección con ArUco → /ekf_odom + TF odom→base_link
+    3. hybrid_a_star_bug0_node     — navegación con /ekf_odom + /scan → /cmd_vel
 
-Prerequisito:
-    Gazebo corriendo con pista_octavo.world (que ya tiene los ArUcos):
-        ros2 launch puzzlebot_gazebo bringup_pista_launch.py
+Prerequisito (robot real):
+    En la Jetson correr primero:
+        ros2 run puzzlebot_pallet_loader camera_publisher \
+            --ros-args -p udp_host:=<IP_DE_TU_PC>
 
 Uso:
     ros2 launch puzzlebot_pallet_loader full_navigation.launch.py
@@ -28,7 +29,7 @@ def generate_launch_description():
     pkg = get_package_share_directory('puzzlebot_pallet_loader')
 
     ekf_aruco_params = os.path.join(pkg, 'config', 'ekf_aruco_params.yaml')
-    nav_params = os.path.join(pkg, 'config', 'pista_obstacles.yaml')
+    nav_params = os.path.join(pkg, 'config', 'real_robot_nav_params.yaml')
 
     # ── 1. ArUco Detector ─────────────────────────────────────────────────────
     # Suscribe: /camera, /camera_info
