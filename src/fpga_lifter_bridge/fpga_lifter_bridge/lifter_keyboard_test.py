@@ -13,13 +13,12 @@ from std_msgs.msg import String
 class LifterKeyboardTest(Node):
     def __init__(self):
         super().__init__('lifter_keyboard_test')
-
         self.pub = self.create_publisher(String, '/forklift_command', 10)
 
         self.current_command = 'stop'
         self.last_published_command = None
 
-        # Publica continuamente el comando actual a 10 Hz
+        # Keep sending current command until a new key is pressed.
         self.timer = self.create_timer(0.10, self.publish_current_command)
 
     def set_command(self, command: str):
@@ -39,10 +38,8 @@ class LifterKeyboardTest(Node):
 
 def get_key_nonblocking():
     dr, _, _ = select.select([sys.stdin], [], [], 0.0)
-
     if dr:
         return sys.stdin.read(1)
-
     return None
 
 
@@ -53,21 +50,23 @@ def main(args=None):
     old_terminal_settings = termios.tcgetattr(sys.stdin)
 
     print('\nControls:')
-    print('  w = lift')
-    print('  s = lower')
+    print('  w = lift manual until upper limit')
+    print('  s = lower manual until lower limit')
+    print('  c = conveyor height, lift 2.5 cm')
+    print('  k = rack height, lift 1.0 cm')
     print('  h = hold')
     print('  SPACE = stop')
     print('  r = reset_encoder')
     print('  t = status')
     print('  q = quit')
-    print('\nThe selected command is published continuously until another key is pressed.\n')
+    print('\nThe selected command is published continuously until another key is pressed.')
+    print('For c/k, press SPACE after the move finishes before requesting the same move again.\n')
 
     try:
         tty.setcbreak(sys.stdin.fileno())
 
         while rclpy.ok():
             rclpy.spin_once(node, timeout_sec=0.05)
-
             key = get_key_nonblocking()
 
             if key is None:
@@ -79,6 +78,10 @@ def main(args=None):
                 node.set_command('lift')
             elif key == 's':
                 node.set_command('lower')
+            elif key == 'c':
+                node.set_command('conveyor')
+            elif key == 'k':
+                node.set_command('rack')
             elif key == 'h':
                 node.set_command('hold')
             elif key == ' ':

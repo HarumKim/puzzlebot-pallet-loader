@@ -40,6 +40,7 @@ setup(
             'ekf_aruco_localization_node = puzzlebot_pallet_loader.ekf_aruco_localization_node:main',
             'aruco_detector_node = puzzlebot_pallet_loader.aruco_detector_node:main',
             'fsm_control_node = puzzlebot_pallet_loader.fsm_control_node:main',
+            'qr_align = puzzlebot_pallet_loader.qr_align:main',
         ],
     },
 )

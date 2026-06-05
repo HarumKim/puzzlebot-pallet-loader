@@ -18,9 +18,9 @@ class ForkliftSpiNode(Node):
         self.declare_parameter('spi_device', 0)
         self.declare_parameter('spi_speed_hz', 1_000_000)
 
-        self.spi_bus = self.get_parameter('spi_bus').value
-        self.spi_device = self.get_parameter('spi_device').value
-        self.spi_speed_hz = self.get_parameter('spi_speed_hz').value
+        self.spi_bus = int(self.get_parameter('spi_bus').value)
+        self.spi_device = int(self.get_parameter('spi_device').value)
+        self.spi_speed_hz = int(self.get_parameter('spi_speed_hz').value)
 
         self.command_sub = self.create_subscription(
             String,
@@ -29,13 +29,7 @@ class ForkliftSpiNode(Node):
             10
         )
 
-        self.status_pub = self.create_publisher(
-            UInt8,
-            '/forklift_status',
-            10
-        )
-
-        self.timer = self.create_timer(0.2, self.request_status)
+        self.status_pub = self.create_publisher(UInt8, '/forklift_status', 10)
 
         self.cmd_map = {
             'stop': 0x00,
@@ -43,6 +37,8 @@ class ForkliftSpiNode(Node):
             'lift': 0x02,
             'hold': 0x03,
             'reset_encoder': 0x04,
+            'conveyor': 0x05,  # FPGA lifts 2.5 cm
+            'rack': 0x06,      # FPGA lifts 1.0 cm
             'status': 0x10,
         }
 
@@ -51,9 +47,7 @@ class ForkliftSpiNode(Node):
 
     def init_spi(self):
         if spidev is None:
-            self.get_logger().error(
-                'spidev is not installed. Install it with: pip3 install spidev'
-            )
+            self.get_logger().error('spidev is not installed. Install it with: pip3 install spidev')
             return
 
         try:
@@ -62,12 +56,10 @@ class ForkliftSpiNode(Node):
             self.spi.max_speed_hz = self.spi_speed_hz
             self.spi.mode = 0b00
             self.spi.bits_per_word = 8
-
             self.get_logger().info(
                 f'SPI initialized on /dev/spidev{self.spi_bus}.{self.spi_device} '
                 f'at {self.spi_speed_hz} Hz'
             )
-
         except Exception as e:
             self.get_logger().error(f'Could not initialize SPI: {e}')
             self.spi = None
@@ -79,7 +71,7 @@ class ForkliftSpiNode(Node):
 
         try:
             rx = self.spi.xfer2([byte_value & 0xFF])
-            return rx[0]
+            return int(rx[0])
         except Exception as e:
             self.get_logger().error(f'SPI transfer failed: {e}')
             return 0xE0
@@ -106,16 +98,14 @@ class ForkliftSpiNode(Node):
         status_msg.data = rx_byte
         self.status_pub.publish(status_msg)
 
-    def request_status(self):
-        rx_byte = self.transfer_byte(0x10)
-
-        status_msg = UInt8()
-        status_msg.data = rx_byte
-        self.status_pub.publish(status_msg)
-
     def destroy_node(self):
-        if self.spi is not None:
-            self.spi.close()
+        try:
+            if self.spi is not None:
+                self.spi.close()
+                self.spi = None
+        except Exception:
+            pass
+
         super().destroy_node()
 
 
@@ -125,21 +115,9 @@ def main(args=None):
 
     try:
         rclpy.spin(node)
-
     except KeyboardInterrupt:
         node.get_logger().info('Ctrl+C detected. Closing SPI node...')
-
-    except Exception as e:
-        node.get_logger().error(f'Unexpected error: {e}')
-
     finally:
-        try:
-            if node.spi is not None:
-                node.spi.close()
-                node.get_logger().info('SPI closed.')
-        except Exception:
-            pass
-
         try:
             node.destroy_node()
         except Exception:
