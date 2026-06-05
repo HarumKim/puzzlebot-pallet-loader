@@ -22,9 +22,10 @@ ekf_aruco_localization_node:
 
     # Ruido de medición R — qué tanto confiar en las correcciones ArUco
     # Más bajo = más confianza en ArUco
-    # 0.25 suaviza las correcciones ArUco para evitar brincos mientras navega.
-    r_range: 0.25
-    r_bearing: 0.25
+    # Valores mas altos = menos confianza en ArUco y correcciones mas suaves.
+    # El bearing se deja mas alto porque pequenas variaciones hacen "bailar" el yaw.
+    r_range: 0.50
+    r_bearing: 1.00
 
     mahalanobis_threshold: 9.21
 
@@ -64,7 +65,8 @@ aruco_detector_node:
   ros__parameters:
     camera_topic: "/camera/image_raw/compressed"
     calib_file: "/home/valeria/puzzlebot-pallet-loader/src/camera_dataset/camera_calibration.npz"
-    marker_size: 0.08
+    # Tamano efectivo calibrado con cinta: 2.45 m medidos por vision vs 2.71 m reales.
+    marker_size: 0.0885
     aruco_dictionary: "DICT_4X4_50"
     allowed_marker_ids: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 
