@@ -12,13 +12,25 @@
 hybrid_a_star_bug0_node:
   ros__parameters:
 
-    # Lista de waypoints a visitar en orden, en metros desde el origen.
-    # Formato: [x0, y0, x1, y1, ...] — pares (x, y) consecutivos.
-    # Waypoint de prueba cerca del ArUco #0 (-1.78, -1.84).
-    # Se deja separado de la pared sur para no caer dentro de la zona inflada.
+    # Formato nuevo:
+    # [x0, y0, yaw0_deg, x1, y1, yaw1_deg, ...]
+    # yaw en grados:
+    #   0   = mirando hacia +X
+    #   90  = mirando hacia +Y
+    #   180 = mirando hacia -X
+    #  -90  = mirando hacia -Y
+
     waypoints:
-    - -1.78  # WP0 x
-    - -1.40  # WP0 y
+    - -1.78   # WP0 x
+    - -1.40   # WP0 y
+    - 180.0   # WP0 yaw deseado en grados
+
+    # Orientación final deseada en waypoint
+    waypoint_yaw_tolerance_deg: 8.0
+
+    # Control de giro final
+    final_yaw_kp: 1.5
+    final_yaw_max_ang: 0.08
 
     # Distancia en metros a la que se considera que se llegó a un waypoint.
     # Más grande = el robot para antes de llegar exactamente.

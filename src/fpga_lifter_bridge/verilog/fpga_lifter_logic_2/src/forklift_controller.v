@@ -80,8 +80,8 @@ module forklift_controller (
     // target_count = encoder_count - target_ticks
     // ============================================================
 
-    localparam signed [31:0] COUNTS_RACK_1CM       = 32'sd75;
-    localparam signed [31:0] COUNTS_CONVEYOR_2_5CM = 32'sd190;
+    localparam signed [31:0] COUNTS_RACK_1CM       = 32'sd65;
+    localparam signed [31:0] COUNTS_CONVEYOR_2_5CM = 32'sd180;
     localparam signed [31:0] POSITION_TOLERANCE    = 32'sd3;
 
     reg signed [31:0] target_count = 32'sd0;
@@ -252,7 +252,7 @@ module forklift_controller (
 
             if (cmd_received && current_cmd == CMD_RESET_ENCODER) begin
                 encoder_count <= 32'sd0;
-            end else if (lower_limit_reached) begin
+            end else if (state == ST_LOW_LIMIT) begin
                 // Bottom reference. Keeps encoder zeroed while lower limit is detected.
                 encoder_count <= 32'sd0;
             end else begin

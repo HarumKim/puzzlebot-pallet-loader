@@ -63,6 +63,9 @@ class HybridAStarBug0Node(Node):
 
         self.declare_parameter('waypoints', DEFAULT_WAYPOINTS)
         self.declare_parameter('goal_tolerance', DEFAULT_GOAL_TOL)
+        self.declare_parameter('waypoint_yaw_tolerance_deg', 8.0)
+        self.declare_parameter('final_yaw_kp', 1.5)
+        self.declare_parameter('final_yaw_max_ang', 0.08)
 
         self.declare_parameter('bounds', [-3.0, -3.0, 3.0, 3.0])
         self.declare_parameter('resolution', 0.10)
@@ -73,10 +76,29 @@ class HybridAStarBug0Node(Node):
         self.declare_parameter('known_obstacle_tolerance', 0.15)
         self.declare_parameter('known_obstacle_angle_window_deg', 20.0)
         
+        # flat = list(self.get_parameter('waypoints').value)
+        # self.waypoints = [(flat[i], flat[i + 1]) for i in range(0, len(flat) - 1, 2)]
         flat = list(self.get_parameter('waypoints').value)
-        self.waypoints = [(flat[i], flat[i + 1]) for i in range(0, len(flat) - 1, 2)]
+
+        if len(flat) % 3 != 0:
+            self.get_logger().error(
+                'Parameter "waypoints" must use groups of 3 values: '
+                '[x0, y0, yaw0_deg, x1, y1, yaw1_deg, ...]'
+            )
+            self.waypoints = []
+        else:
+            self.waypoints = [
+                (flat[i], flat[i + 1], math.radians(flat[i + 2]))
+                for i in range(0, len(flat), 3)
+            ]
+
 
         self._goal_tol = float(self.get_parameter('goal_tolerance').value)
+        self._wp_yaw_tol = math.radians(
+            float(self.get_parameter('waypoint_yaw_tolerance_deg').value)
+        )
+        self._final_yaw_kp = float(self.get_parameter('final_yaw_kp').value)
+        self._final_yaw_max_ang = float(self.get_parameter('final_yaw_max_ang').value)
         self._bounds = list(self.get_parameter('bounds').value)
         self._resolution = float(self.get_parameter('resolution').value)
         self._obstacles = list(self.get_parameter('obstacles').value)
@@ -108,6 +130,7 @@ class HybridAStarBug0Node(Node):
         self.wp_idx = 0
         self.path = []
         self.path_idx = 0
+        self._aligning_final_yaw = False
 
         self._state = 'FOLLOW_PATH'
         self._wall_entry_pos = None
@@ -204,11 +227,36 @@ class HybridAStarBug0Node(Node):
             self._cmd(0.0, 0.0)
             return
 
-        gx, gy = self.waypoints[self.wp_idx]
+        gx, gy, gyaw = self.waypoints[self.wp_idx]
         dist_to_goal = math.hypot(gx - self.x, gy - self.y)
 
         if dist_to_goal < self._goal_tol:
-            self.get_logger().info(f'Waypoint {self.wp_idx} reached.')
+            yaw_err = _wrap(gyaw - self.yaw)
+
+            if abs(yaw_err) > self._wp_yaw_tol:
+                self._aligning_final_yaw = True
+                angular = _clamp(
+                    self._final_yaw_kp * yaw_err,
+                    -self._final_yaw_max_ang,
+                    self._final_yaw_max_ang
+                )
+
+                self._cmd(0.0, angular)
+
+                self.get_logger().info(
+                    f'Waypoint {self.wp_idx} position reached. '
+                    f'Aligning yaw: target={math.degrees(gyaw):.1f}°, '
+                    f'current={math.degrees(self.yaw):.1f}°, '
+                    f'error={math.degrees(yaw_err):.1f}°'
+                )
+                return
+
+            self._aligning_final_yaw = False
+            self.get_logger().info(
+                f'Waypoint {self.wp_idx} reached with yaw '
+                f'{math.degrees(self.yaw):.1f}°.'
+            )
+
             self.wp_idx += 1
             self.path = []
             self.path_idx = 0
@@ -279,7 +327,7 @@ class HybridAStarBug0Node(Node):
             # The planned path is already consumed, but the robot may still be
             # slightly outside the waypoint tolerance. Instead of replanning every
             # control tick, directly approach the final global waypoint.
-            gx, gy = self.waypoints[self.wp_idx]
+            gx, gy, _ = self.waypoints[self.wp_idx]
             dist = math.hypot(gx - self.x, gy - self.y)
 
             if dist > self._goal_tol:

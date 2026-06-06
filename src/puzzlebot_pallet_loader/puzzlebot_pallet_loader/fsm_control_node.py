@@ -1,171 +1,237 @@
+#!/usr/bin/env python3
 """
-fsm_control_node.py — Mux de seguridad por voz para el Puzzlebot autónomo
+fsm_control_node.py — Mux de navegación + QR align para Puzzlebot Pallet Loader
 
-Estados:
-    IDLE     → esperando comando START
-    RUNNING  → misión activa, pasa /nav/cmd_vel a /cmd_vel
-    STOP     → parada de seguridad, bloquea navegación
-    LIFT     → detenido ejecutando recogida de pallet
-    DROP     → detenido ejecutando depósito de pallet
+Objetivo:
+  - Dejar que hybrid_a_star_bug0_node navegue normalmente hacia waypoints.
+  - Cuando qr_align detecte un QR, detener navegación autónoma.
+  - Activar qr_align para que controle /cmd_vel.
+  - Mantener EKF-ArUco corriendo en paralelo; este nodo no lo bloquea.
 
-Comandos de voz:
-    stop  → parada de seguridad inmediata
-    start → reanudar misión autónoma
-    lift  → recoger pallet
-    drop  → depositar pallet
+Flujo recomendado de tópicos:
+  hybrid_a_star_bug0_node  -> /nav/cmd_vel
+  qr_align                 -> /qr_align/cmd_vel
+  fsm_control_node         -> /cmd_vel
 
 Tópicos suscritos:
-    /puzzlebot/command  (std_msgs/String)      — comando reconocido por HMM
-    /nav/cmd_vel        (geometry_msgs/Twist)  — velocidad del nodo de navegación
+  /nav/cmd_vel             geometry_msgs/Twist
+  /qr_align/cmd_vel        geometry_msgs/Twist
+  /qr_align/status         std_msgs/String    SEARCHING | DETECTED | ALIGNING | DONE
+  /puzzlebot/command       std_msgs/String    start | stop | reset_qr | force_qr | nav
+  /aruco_measurements      std_msgs/Float32MultiArray  opcional, solo monitoreo/frescura
 
 Tópicos publicados:
-    /cmd_vel            (geometry_msgs/Twist)  — velocidad final al robot
-    /fsm/state          (std_msgs/String)      — estado actual
+  /cmd_vel                 geometry_msgs/Twist
+  /fsm/state               std_msgs/String
+  /qr_align/enable         std_msgs/Bool
 """
+
+import time
 
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import String
 from geometry_msgs.msg import Twist
+from std_msgs.msg import Bool, Float32MultiArray, String
 
 
 class FSMControlNode(Node):
+    STATE_NAVIGATING = 'NAVIGATING'
+    STATE_QR_ALIGN = 'QR_ALIGN'
+    STATE_QR_DONE = 'QR_DONE'
+    STATE_STOPPED = 'STOPPED'
 
-    # ── Comandos válidos ─────────────────────────────────────────
-    COMANDOS = {"stop", "start", "lift", "drop"}
-
-    # ── Definición de estados ────────────────────────────────────
-    ESTADO_IDLE    = "idle"
-    ESTADO_RUNNING = "running"
-    ESTADO_STOP    = "stop"
-    ESTADO_LIFT    = "lift"
-    ESTADO_DROP    = "drop"
+    QR_DETECTED_STATUSES = {'DETECTED', 'ALIGNING'}
+    QR_DONE_STATUSES = {'DONE'}
 
     def __init__(self):
         super().__init__('fsm_control_node')
 
-        self._estado          = self.ESTADO_RUNNING
-        self._mission_active  = True
-        self._nav_twist       = Twist()
+        # ── Parameters ───────────────────────────────────────────────
+        self.declare_parameter('nav_cmd_vel_topic', '/nav/cmd_vel')
+        self.declare_parameter('qr_cmd_vel_topic', '/qr_align/cmd_vel')
+        self.declare_parameter('cmd_vel_topic', '/cmd_vel')
+        self.declare_parameter('qr_status_topic', '/qr_align/status')
+        self.declare_parameter('qr_enable_topic', '/qr_align/enable')
+        self.declare_parameter('fsm_state_topic', '/fsm/state')
+        self.declare_parameter('voice_command_topic', '/puzzlebot/command')
+        self.declare_parameter('aruco_topic', '/aruco_measurements')
+        self.declare_parameter('control_rate_hz', 20.0)
+        self.declare_parameter('auto_resume_after_qr_done', False)
+        self.declare_parameter('qr_detection_debounce', 2)
+        self.declare_parameter('qr_cmd_timeout_sec', 0.5)
+        self.declare_parameter('nav_cmd_timeout_sec', 0.5)
 
-        # ── Publicadores ─────────────────────────────────────────
-        self.pub_cmd_vel = self.create_publisher(Twist,  '/cmd_vel',   10)
-        self.pub_state   = self.create_publisher(String, '/fsm/state', 10)
+        self.nav_cmd_vel_topic = self.get_parameter('nav_cmd_vel_topic').value
+        self.qr_cmd_vel_topic = self.get_parameter('qr_cmd_vel_topic').value
+        self.cmd_vel_topic = self.get_parameter('cmd_vel_topic').value
+        self.qr_status_topic = self.get_parameter('qr_status_topic').value
+        self.qr_enable_topic = self.get_parameter('qr_enable_topic').value
+        self.fsm_state_topic = self.get_parameter('fsm_state_topic').value
+        self.voice_command_topic = self.get_parameter('voice_command_topic').value
+        self.aruco_topic = self.get_parameter('aruco_topic').value
+        self.auto_resume_after_qr_done = bool(self.get_parameter('auto_resume_after_qr_done').value)
+        self.qr_detection_debounce = int(self.get_parameter('qr_detection_debounce').value)
+        self.qr_cmd_timeout_sec = float(self.get_parameter('qr_cmd_timeout_sec').value)
+        self.nav_cmd_timeout_sec = float(self.get_parameter('nav_cmd_timeout_sec').value)
+        control_rate_hz = float(self.get_parameter('control_rate_hz').value)
 
-        # ── Suscripciones ────────────────────────────────────────
-        self.create_subscription(
-            String, '/puzzlebot/command', self._comando_callback, 10
-        )
-        self.create_subscription(
-            Twist, '/nav/cmd_vel', self._nav_callback, 10
-        )
+        # ── Internal state ───────────────────────────────────────────
+        self.state = self.STATE_NAVIGATING
+        self.nav_twist = Twist()
+        self.qr_twist = Twist()
+        self.last_nav_time = 0.0
+        self.last_qr_cmd_time = 0.0
+        self.last_aruco_time = 0.0
+        self.last_aruco_id = None
+        self.qr_detection_count = 0
+        self.qr_align_enabled = False
 
-        # Timer 10 Hz — publica /cmd_vel continuamente
-        self.create_timer(0.1, self._publicar_cmd_vel)
+        # ── Publishers ──────────────────────────────────────────────
+        self.pub_cmd_vel = self.create_publisher(Twist, self.cmd_vel_topic, 10)
+        self.pub_state = self.create_publisher(String, self.fsm_state_topic, 10)
+        self.pub_qr_enable = self.create_publisher(Bool, self.qr_enable_topic, 10)
 
+        # ── Subscriptions ───────────────────────────────────────────
+        self.create_subscription(Twist, self.nav_cmd_vel_topic, self._nav_cmd_cb, 10)
+        self.create_subscription(Twist, self.qr_cmd_vel_topic, self._qr_cmd_cb, 10)
+        self.create_subscription(String, self.qr_status_topic, self._qr_status_cb, 10)
+        self.create_subscription(String, self.voice_command_topic, self._voice_cmd_cb, 10)
+        self.create_subscription(Float32MultiArray, self.aruco_topic, self._aruco_cb, 10)
+
+        period = 1.0 / max(control_rate_hz, 1.0)
+        self.create_timer(period, self._control_loop)
+
+        self._publish_state()
+        self._set_qr_enable(False)
         self.get_logger().info(
-            "FSM Control Node listo.\n"
-            "  Estado inicial: RUNNING\n"
-            "  Comandos: STOP | START | LIFT | DROP"
-        )
-        self._publicar_estado()
-
-    # ════════════════════════════════════════════════════════════
-    # NAVEGACIÓN — pasa a /cmd_vel solo si misión activa
-    # ════════════════════════════════════════════════════════════
-    def _nav_callback(self, msg: Twist):
-        if self._mission_active:
-            self._nav_twist = msg
-
-    # ════════════════════════════════════════════════════════════
-    # COMANDO DE VOZ — máquina de estados
-    # ════════════════════════════════════════════════════════════
-    def _comando_callback(self, msg: String):
-        comando = msg.data.strip().lower()
-
-        if comando not in self.COMANDOS:
-            self.get_logger().warn(
-                f"'{comando.upper()}' no reconocido — ignorado."
-            )
-            return
-
-        self.get_logger().info(f"Comando: '{comando.upper()}'")
-
-        if comando == "stop":
-            self._ejecutar_stop()
-        elif comando == "start":
-            self._ejecutar_start()
-        elif comando == "lift":
-            self._ejecutar_lift()
-        elif comando == "drop":
-            self._ejecutar_drop()
-
-    # ════════════════════════════════════════════════════════════
-    # ACCIONES POR ESTADO
-    # ════════════════════════════════════════════════════════════
-    def _ejecutar_stop(self):
-        """Parada de seguridad — bloquea navegación inmediatamente."""
-        self._mission_active = False
-        self._nav_twist      = Twist()
-        self.pub_cmd_vel.publish(Twist())
-        self._transicion(self.ESTADO_STOP)
-
-    def _ejecutar_start(self):
-        """Reanudar misión — habilita paso de /nav/cmd_vel."""
-        self._mission_active = True
-        self._transicion(self.ESTADO_RUNNING)
-
-    def _ejecutar_lift(self):
-        """Recoger pallet — detiene motores y ejecuta acción de recogida."""
-        self._mission_active = False
-        self._nav_twist      = Twist()
-        self.pub_cmd_vel.publish(Twist())
-        self._transicion(self.ESTADO_LIFT)
-        self.get_logger().info(
-            "Ejecutando LIFT — agrega aquí la lógica del actuador."
+            'FSM integrado listo. '\
+            f'nav={self.nav_cmd_vel_topic} -> cmd={self.cmd_vel_topic}, '\
+            f'qr={self.qr_cmd_vel_topic}, qr_status={self.qr_status_topic}'
         )
 
-    def _ejecutar_drop(self):
-        """Depositar pallet — detiene motores y ejecuta acción de depósito."""
-        self._mission_active = False
-        self._nav_twist      = Twist()
-        self.pub_cmd_vel.publish(Twist())
-        self._transicion(self.ESTADO_DROP)
-        self.get_logger().info(
-            "Ejecutando DROP — agrega aquí la lógica del actuador."
-        )
+    # ────────────────────────────────────────────────────────────────
+    # Callbacks
+    # ────────────────────────────────────────────────────────────────
+    def _nav_cmd_cb(self, msg: Twist):
+        self.nav_twist = msg
+        self.last_nav_time = time.monotonic()
 
-    # ════════════════════════════════════════════════════════════
-    # PUBLICAR /cmd_vel CONTINUAMENTE (10 Hz)
-    # ════════════════════════════════════════════════════════════
-    def _publicar_cmd_vel(self):
-        if self._mission_active:
-            self.pub_cmd_vel.publish(self._nav_twist)
+    def _qr_cmd_cb(self, msg: Twist):
+        self.qr_twist = msg
+        self.last_qr_cmd_time = time.monotonic()
+
+    def _aruco_cb(self, msg: Float32MultiArray):
+        # No bloquea ni modifica EKF. Solo monitorea que el pipeline ArUco siga vivo.
+        if len(msg.data) >= 1:
+            self.last_aruco_id = int(msg.data[0])
+            self.last_aruco_time = time.monotonic()
+
+    def _qr_status_cb(self, msg: String):
+        status = msg.data.strip().upper()
+
+        if status in self.QR_DETECTED_STATUSES:
+            self.qr_detection_count += 1
+        else:
+            self.qr_detection_count = 0
+
+        if self.state == self.STATE_NAVIGATING:
+            if self.qr_detection_count >= self.qr_detection_debounce:
+                self.get_logger().info('QR detectado: deteniendo navegación y activando qr_align.')
+                self._transition(self.STATE_QR_ALIGN)
+                self._set_qr_enable(True)
+                self._publish_stop()
+
+        elif self.state == self.STATE_QR_ALIGN:
+            if status in self.QR_DONE_STATUSES:
+                self.get_logger().info('qr_align reportó DONE. Robot detenido.')
+                self._publish_stop()
+                self._set_qr_enable(False)
+                if self.auto_resume_after_qr_done:
+                    self._transition(self.STATE_NAVIGATING)
+                else:
+                    self._transition(self.STATE_QR_DONE)
+
+    def _voice_cmd_cb(self, msg: String):
+        cmd = msg.data.strip().lower()
+
+        if cmd == 'stop':
+            self.get_logger().warn('Comando STOP recibido.')
+            self._set_qr_enable(False)
+            self._publish_stop()
+            self._transition(self.STATE_STOPPED)
+
+        elif cmd in ('start', 'nav', 'resume'):
+            self.get_logger().info('Comando START/NAV recibido. Reanudando navegación.')
+            self.qr_detection_count = 0
+            self._set_qr_enable(False)
+            self._transition(self.STATE_NAVIGATING)
+
+        elif cmd in ('force_qr', 'qr'):
+            self.get_logger().info('Comando FORCE_QR recibido. Activando qr_align.')
+            self._publish_stop()
+            self._set_qr_enable(True)
+            self._transition(self.STATE_QR_ALIGN)
+
+        elif cmd in ('reset_qr', 'reset'):
+            self.get_logger().info('Reset QR recibido. Estado QR_DONE -> NAVIGATING.')
+            self.qr_detection_count = 0
+            self._set_qr_enable(False)
+            self._transition(self.STATE_NAVIGATING)
+
+    # ────────────────────────────────────────────────────────────────
+    # Control loop
+    # ────────────────────────────────────────────────────────────────
+    def _control_loop(self):
+        now = time.monotonic()
+
+        if self.state == self.STATE_NAVIGATING:
+            self._set_qr_enable(False)
+            if now - self.last_nav_time <= self.nav_cmd_timeout_sec:
+                self.pub_cmd_vel.publish(self.nav_twist)
+            else:
+                self.pub_cmd_vel.publish(Twist())
+
+        elif self.state == self.STATE_QR_ALIGN:
+            self._set_qr_enable(True)
+            if now - self.last_qr_cmd_time <= self.qr_cmd_timeout_sec:
+                self.pub_cmd_vel.publish(self.qr_twist)
+            else:
+                # Si qr_align deja de publicar, falla seguro: robot detenido.
+                self.pub_cmd_vel.publish(Twist())
+
         else:
             self.pub_cmd_vel.publish(Twist())
 
-    # ════════════════════════════════════════════════════════════
-    # TRANSICIÓN DE ESTADO
-    # ════════════════════════════════════════════════════════════
-    def _transicion(self, nuevo_estado: str):
-        if nuevo_estado != self._estado:
-            self.get_logger().info(
-                f"Estado: {self._estado.upper()} → {nuevo_estado.upper()}"
-            )
-            self._estado = nuevo_estado
-            self._publicar_estado()
+    # ────────────────────────────────────────────────────────────────
+    # Helpers
+    # ────────────────────────────────────────────────────────────────
+    def _set_qr_enable(self, enabled: bool):
+        if enabled != self.qr_align_enabled:
+            self.qr_align_enabled = enabled
+            self.get_logger().info(f'qr_align enable = {enabled}')
 
-    def _publicar_estado(self):
-        msg      = String()
-        msg.data = self._estado.upper()
+        msg = Bool()
+        msg.data = bool(enabled)
+        self.pub_qr_enable.publish(msg)
+
+    def _publish_stop(self):
+        self.pub_cmd_vel.publish(Twist())
+
+    def _transition(self, new_state: str):
+        if new_state != self.state:
+            self.get_logger().info(f'FSM: {self.state} -> {new_state}')
+            self.state = new_state
+            self._publish_state()
+
+    def _publish_state(self):
+        msg = String()
+        msg.data = self.state
         self.pub_state.publish(msg)
 
-    # ════════════════════════════════════════════════════════════
-    # CIERRE LIMPIO
-    # ════════════════════════════════════════════════════════════
     def destroy_node(self):
-        self.get_logger().info("Deteniendo robot antes de cerrar.")
-        self.pub_cmd_vel.publish(Twist())
+        self.get_logger().info('Cerrando FSM: enviando stop.')
+        self._publish_stop()
+        self._set_qr_enable(False)
         super().destroy_node()
 
 
@@ -178,7 +244,8 @@ def main(args=None):
         pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == '__main__':
