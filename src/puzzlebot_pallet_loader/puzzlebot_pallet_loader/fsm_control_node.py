@@ -5,13 +5,15 @@ fsm_control_node.py — Mission FSM for Puzzlebot Pallet Loader
 Mission implemented:
   1) Navigate to waypoint 1 using EKF + ArUco corrected odometry.
   2) After waypoint 1 position + final yaw are reached, stop navigation.
-  3) Wait for QR detection.
-  4) Enable qr_align and let it control /cmd_vel.
-  5) When qr_align reports DONE, stop robot.
+  3) Enable qr_alignP so it can detect the QR.
+  4) When QR is accepted, let qr_alignP control /cmd_vel.
+  5) When qr_alignP reports READY_TO_LOAD, stop robot.
   6) Send forklift reset_encoder.
-  7) Send forklift rack command, which lifts 1 cm.
-  8) Resume navigation to waypoint 2.
-  9) When waypoint 2 is reached, finish mission.
+  7) Send forklift conveyor command to reach conveyor height.
+  8) Enable qr_alignP LOAD advance using /qr_align/load_enable.
+  9) When qr_alignP reports LOAD_DONE, send forklift lift command.
+ 10) Resume navigation to waypoint 2.
+ 11) When waypoint 2 is reached, finish mission.
 
 Command mux:
   hybrid_a_star_bug0_node  -> /nav/cmd_vel
@@ -31,6 +33,7 @@ Main published topics:
   /fsm/state               std_msgs/String
   /mission/event           std_msgs/String
   /qr_align/enable         std_msgs/Bool
+  /qr_align/load_enable    std_msgs/Bool
   /forklift_command        std_msgs/String
 """
 
@@ -48,6 +51,9 @@ class FSMControlNode(Node):
     STATE_WAIT_QR_DETECTION = 'WAIT_QR_DETECTION'
     STATE_QR_ALIGN = 'QR_ALIGN'
     STATE_FORKLIFT_RESET_ENCODER = 'FORKLIFT_RESET_ENCODER'
+    STATE_FORKLIFT_CONVEYOR_HEIGHT = 'FORKLIFT_CONVEYOR_HEIGHT'
+    STATE_QR_LOAD = 'QR_LOAD'
+    STATE_FORKLIFT_LIFT_OUT = 'FORKLIFT_LIFT_OUT'
     STATE_FORKLIFT_LIFT_RACK = 'FORKLIFT_LIFT_RACK'
     STATE_NAV_TO_WP2 = 'NAV_TO_WP2'
     STATE_MISSION_DONE = 'MISSION_DONE'
@@ -89,6 +95,7 @@ class FSMControlNode(Node):
         self.declare_parameter('navigation_status_topic', '/navigation/status')
         self.declare_parameter('qr_status_topic', '/qr_align/status')
         self.declare_parameter('qr_enable_topic', '/qr_align/enable')
+        self.declare_parameter('qr_load_enable_topic', '/qr_align/load_enable')
 
         self.declare_parameter('forklift_command_topic', '/forklift_command')
         self.declare_parameter('forklift_status_topic', '/forklift_status')
@@ -114,6 +121,10 @@ class FSMControlNode(Node):
         self.declare_parameter('forklift_reset_command', 'reset_encoder')
         self.declare_parameter('forklift_rack_command', 'rack')
         self.declare_parameter('forklift_stop_command', 'stop')
+        self.declare_parameter('forklift_conveyor_command', 'conveyor')
+        self.declare_parameter('forklift_lift_command', 'lift')
+        self.declare_parameter('forklift_conveyor_wait_sec', 3.0)
+        self.declare_parameter('forklift_lift_out_wait_sec', 2.0)
 
         # FPGA status values, used only if use_forklift_status=True
         self.declare_parameter('forklift_hold_status', 3)
@@ -126,10 +137,15 @@ class FSMControlNode(Node):
         self.navigation_status_topic = self.get_parameter('navigation_status_topic').value
         self.qr_status_topic = self.get_parameter('qr_status_topic').value
         self.qr_enable_topic = self.get_parameter('qr_enable_topic').value
+        self.qr_load_enable_topic = self.get_parameter('qr_load_enable_topic').value
 
         self.forklift_command_topic = self.get_parameter('forklift_command_topic').value
         self.forklift_status_topic = self.get_parameter('forklift_status_topic').value
         self.use_forklift_status = bool(self.get_parameter('use_forklift_status').value)
+        self.forklift_conveyor_command = str(self.get_parameter('forklift_conveyor_command').value)
+        self.forklift_lift_command = str(self.get_parameter('forklift_lift_command').value)
+        self.forklift_conveyor_wait_sec = float(self.get_parameter('forklift_conveyor_wait_sec').value)
+        self.forklift_lift_out_wait_sec = float(self.get_parameter('forklift_lift_out_wait_sec').value)
 
         self.fsm_state_topic = self.get_parameter('fsm_state_topic').value
         self.mission_event_topic = self.get_parameter('mission_event_topic').value
@@ -182,6 +198,7 @@ class FSMControlNode(Node):
         self.pub_state = self.create_publisher(String, self.fsm_state_topic, 10)
         self.pub_event = self.create_publisher(String, self.mission_event_topic, 10)
         self.pub_qr_enable = self.create_publisher(Bool, self.qr_enable_topic, 10)
+        self.pub_qr_load_enable = self.create_publisher(Bool, self.qr_load_enable_topic, 10)
         self.pub_forklift_command = self.create_publisher(
             String, self.forklift_command_topic, 10
         )
@@ -201,6 +218,7 @@ class FSMControlNode(Node):
         self._publish_state()
         self._publish_event('MISSION_STARTED_NAV_TO_WP1')
         self._set_qr_enable(False)
+        self._set_qr_load_enable(False)
         self._publish_forklift_command_once(self.forklift_stop_command)
 
         self.get_logger().info(
@@ -221,6 +239,11 @@ class FSMControlNode(Node):
     def _qr_cmd_cb(self, msg: Twist):
         self.qr_twist = msg
         self.last_qr_cmd_time = time.monotonic()
+
+    def _set_qr_load_enable(self, enabled: bool):
+        msg = Bool()
+        msg.data = bool(enabled)
+        self.pub_qr_load_enable.publish(msg)
 
     def _aruco_cb(self, msg: Float32MultiArray):
         # Does not block or modify EKF. Only monitors ArUco freshness.
@@ -287,15 +310,29 @@ class FSMControlNode(Node):
                 self.qr_detection_count = 0
 
         elif self.state == self.STATE_QR_ALIGN:
-            if status in self.QR_DONE_STATUSES:
-                self.get_logger().info('qr_align reported DONE.')
+            if status == 'READY_TO_LOAD':
+                self.get_logger().info('qr_alignP requested LOAD preparation.')
                 self._publish_stop()
-                self._set_qr_enable(False)
+                self._set_qr_load_enable(False)
                 self._transition(
                     self.STATE_FORKLIFT_RESET_ENCODER,
-                    'QR_DONE_RESETTING_ENCODER'
+                    'QR_READY_TO_LOAD_RESETTING_ENCODER'
                 )
-
+            elif status in self.QR_DONE_STATUSES:
+                self.get_logger().info('qr_alignP reported DONE while in QR_ALIGN.')
+                self._publish_stop()
+                self._set_qr_enable(False)
+                self._set_qr_load_enable(False)
+        elif self.state == self.STATE_QR_LOAD:
+            if status in ('LOAD_DONE', 'DONE'):
+                self.get_logger().info('qr_alignP completed LOAD distance.')
+                self._publish_stop()
+                self._set_qr_enable(False)
+                self._set_qr_load_enable(False)
+                self._transition(
+                    self.STATE_FORKLIFT_LIFT_OUT,
+                    'LOAD_DONE_LIFTING_OUT_PALLET'
+                )
         else:
             self.get_logger().debug(
                 f'QR status {status} ignored while state={self.state}'
@@ -307,6 +344,7 @@ class FSMControlNode(Node):
         if cmd == 'stop':
             self.get_logger().warn('Mission command STOP received.')
             self._set_qr_enable(False)
+            self._set_qr_load_enable(False)
             self._publish_stop()
             self._publish_forklift_command_once(self.forklift_stop_command)
             self._transition(self.STATE_STOPPED, 'MISSION_STOPPED')
@@ -318,6 +356,7 @@ class FSMControlNode(Node):
         elif cmd in ('resume', 'nav', 'continue'):
             self.get_logger().info('Mission command RESUME/NAV received.')
             self._set_qr_enable(False)
+            self._set_qr_load_enable(False)
             if self.state == self.STATE_STOPPED:
                 self._transition(self.STATE_NAV_TO_WP1, 'RESUME_TO_WP1')
             elif self.state == self.STATE_MISSION_DONE:
@@ -356,12 +395,14 @@ class FSMControlNode(Node):
             self.get_logger().warn('Mission command SKIP_FORKLIFT received.')
             self._publish_stop()
             self._set_qr_enable(False)
+            self._set_qr_load_enable(False)
             self._transition(self.STATE_NAV_TO_WP2, 'FORKLIFT_SKIPPED_NAV_TO_WP2')
 
         elif cmd in ('reset_qr', 'reset'):
             self.get_logger().info('Mission command RESET_QR received.')
             self.qr_detection_count = 0
             self._set_qr_enable(False)
+            self._set_qr_load_enable(False)
             if self.state == self.STATE_QR_ALIGN:
                 self._transition(self.STATE_WAIT_QR_DETECTION, 'QR_RESET_WAITING')
             else:
@@ -378,6 +419,7 @@ class FSMControlNode(Node):
 
         if self.state in (self.STATE_NAV_TO_WP1, self.STATE_NAV_TO_WP2):
             self._set_qr_enable(False)
+            self._set_qr_load_enable(False)
 
             if now - self.last_nav_time <= self.nav_cmd_timeout_sec:
                 self.pub_cmd_vel.publish(self.nav_twist)
@@ -398,40 +440,67 @@ class FSMControlNode(Node):
 
         elif self.state == self.STATE_FORKLIFT_RESET_ENCODER:
             self.pub_cmd_vel.publish(Twist())
-            self._set_qr_enable(False)
+            self._set_qr_enable(True)
+            self._set_qr_load_enable(False)
 
             elapsed = now - self.state_enter_time
+
             if elapsed <= self.forklift_reset_duration_sec:
                 self._publish_forklift_command_once(self.forklift_reset_command)
             else:
                 self._transition(
-                    self.STATE_FORKLIFT_LIFT_RACK,
-                    'ENCODER_RESET_DONE_LIFTING_RACK_1CM'
+                    self.STATE_FORKLIFT_CONVEYOR_HEIGHT,
+                    'ENCODER_RESET_DONE_CONVEYOR_HEIGHT'
                 )
+        
 
-        elif self.state == self.STATE_FORKLIFT_LIFT_RACK:
+        elif self.state == self.STATE_FORKLIFT_CONVEYOR_HEIGHT:
             self.pub_cmd_vel.publish(Twist())
-            self._set_qr_enable(False)
+            self._set_qr_enable(True)
+            self._set_qr_load_enable(False)
 
             elapsed = now - self.state_enter_time
 
             if elapsed <= self.forklift_rack_command_duration_sec:
-                self._publish_forklift_command_once(self.forklift_rack_command)
+                self._publish_forklift_command_once(self.forklift_conveyor_command)
 
-            if self.use_forklift_status:
-                if self.last_forklift_status == self.forklift_hold_status:
-                    self.get_logger().info(
-                        f'Forklift reached HOLD status 0x{self.forklift_hold_status:02X}.'
-                    )
-                    self._publish_forklift_command_once(self.forklift_stop_command)
-                    self._transition(self.STATE_NAV_TO_WP2, 'FORKLIFT_DONE_NAV_TO_WP2')
+            if elapsed >= self.forklift_conveyor_wait_sec:
+                self._publish_forklift_command_once(self.forklift_stop_command)
+                self._set_qr_load_enable(True)
+                self._transition(
+                    self.STATE_QR_LOAD,
+                    'CONVEYOR_HEIGHT_DONE_QR_LOAD_ENABLED'
+                )
+
+        elif self.state == self.STATE_QR_LOAD:
+            self._set_qr_enable(True)
+            self._set_qr_load_enable(True)
+
+            if now - self.last_qr_cmd_time <= self.qr_cmd_timeout_sec:
+                self.pub_cmd_vel.publish(self.qr_twist)
             else:
-                if elapsed >= self.forklift_lift_wait_sec:
-                    self._publish_forklift_command_once(self.forklift_stop_command)
-                    self._transition(self.STATE_NAV_TO_WP2, 'FORKLIFT_TIMER_DONE_NAV_TO_WP2')
+                self.pub_cmd_vel.publish(Twist())
+
+        elif self.state == self.STATE_FORKLIFT_LIFT_OUT:
+            self.pub_cmd_vel.publish(Twist())
+            self._set_qr_enable(False)
+            self._set_qr_load_enable(False)
+
+            elapsed = now - self.state_enter_time
+
+            if elapsed <= self.forklift_rack_command_duration_sec:
+                self._publish_forklift_command_once(self.forklift_lift_command)
+
+            if elapsed >= self.forklift_lift_out_wait_sec:
+                self._publish_forklift_command_once(self.forklift_stop_command)
+                self._transition(
+                    self.STATE_NAV_TO_WP2,
+                    'PALLET_LIFTED_NAV_TO_WP2'
+                )
 
         elif self.state in (self.STATE_MISSION_DONE, self.STATE_STOPPED):
             self._set_qr_enable(False)
+            self._set_qr_load_enable(False)
             self.pub_cmd_vel.publish(Twist())
 
         else:
@@ -449,6 +518,7 @@ class FSMControlNode(Node):
         self._publish_stop()
         self._publish_forklift_command_once(self.forklift_stop_command)
         self._transition(self.STATE_NAV_TO_WP1, 'MISSION_RESET_NAV_TO_WP1')
+        self._set_qr_load_enable(False)
 
     def _set_qr_enable(self, enabled: bool):
         if enabled != self.qr_align_enabled:
@@ -500,6 +570,7 @@ class FSMControlNode(Node):
             self._publish_stop()
             self._set_qr_enable(False)
             self._publish_forklift_command_once(self.forklift_stop_command)
+            self._set_qr_load_enable(False)
         except Exception:
             pass
 
@@ -524,6 +595,7 @@ def main(args=None):
         try:
             node._publish_stop()
             node._set_qr_enable(False)
+            node._set_qr_load_enable(False)
             node._publish_forklift_command_once(node.forklift_stop_command)
         except Exception:
             pass

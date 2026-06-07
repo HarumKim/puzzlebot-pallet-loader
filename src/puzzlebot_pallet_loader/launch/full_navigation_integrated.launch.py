@@ -67,6 +67,7 @@ def generate_launch_description():
                 'cmd_vel_topic': '/qr_align/cmd_vel',
                 'enable_topic': '/qr_align/enable',
                 'status_topic': '/qr_align/status',
+                'load_enable_topic': '/qr_align/load_enable',
                 'udp_port': 5004,
             }
         ],
@@ -84,6 +85,7 @@ def generate_launch_description():
                 'cmd_vel_topic': '/cmd_vel',
                 'qr_status_topic': '/qr_align/status',
                 'qr_enable_topic': '/qr_align/enable',
+                'qr_load_enable_topic': '/qr_align/load_enable',
                 'aruco_topic': '/aruco_measurements',
                 'auto_resume_after_qr_done': False,
                 'qr_detection_debounce': 2,

@@ -73,16 +73,22 @@ class QRApproach(Node):
         self.declare_parameter('cmd_vel_topic', '/qr_align/cmd_vel')
         self.declare_parameter('enable_topic', '/qr_align/enable')
         self.declare_parameter('status_topic', '/qr_align/status')
+        self.declare_parameter('load_enable_topic', '/qr_align/load_enable')
         self.declare_parameter('udp_port', 5004)
 
         cmd_vel_topic = self.get_parameter('cmd_vel_topic').value
         enable_topic = self.get_parameter('enable_topic').value
         status_topic = self.get_parameter('status_topic').value
+        load_enable_topic = self.get_parameter('load_enable_topic').value
         udp_port = self.get_parameter('udp_port').value
+
+        self._load_enabled = False
+        self._ready_to_load_sent = False
                 
         self._pub = self.create_publisher(Twist, cmd_vel_topic, 10)
         self._status_pub = self.create_publisher(String, status_topic, 10)
         self.create_subscription(Bool, enable_topic, self._enable_cb, 10)
+        self.create_subscription(Bool, load_enable_topic, self._load_enable_cb, 10)
         self._enabled = False
         self._pub_img = self.create_publisher(
             CompressedImage, '/detection/annotated/compressed', 10)
@@ -123,10 +129,31 @@ class QRApproach(Node):
         self.get_logger().info(f'QR Approach listo - STOP_DIAG={STOP_DIAG_PX}px')
 
     # ── GStreamer ─────────────────────────────────────────────────────────────
+    def _load_enable_cb(self, msg: Bool):
+        self._load_enabled = bool(msg.data)
+
+        if self._load_enabled:
+            self.get_logger().info('LOAD enabled by FSM.')
+
+            # Si ya habíamos pedido permiso para cargar, ahora sí arrancamos LOAD.
+            if self._state == ST_APPROACH and self._ready_to_load_sent:
+                self._cmd(0.0, 0.0)
+                self._state = ST_LOAD
+                self._load_start = self._now()
+                self._load_last_time = None
+                self._load_dist_done = 0.0
+                self.get_logger().info('FSM autorizó LOAD — iniciando avance hardcodeado.')
+
     def _enable_cb(self, msg: Bool):
         self._enabled = bool(msg.data)
+
         if not self._enabled:
             self._cmd(0.0, 0.0)
+            self._load_enabled = False
+            self._ready_to_load_sent = False
+            self._state = ST_APPROACH
+            self._load_last_time = None
+            self._load_dist_done = 0.0
 
     def _publish_status(self, status: str):
         msg = String()
@@ -196,7 +223,7 @@ class QRApproach(Node):
         # ══════════════════════════════════════════════════════════════════════
         if self._state == ST_DONE:
             self._cmd(0.0, 0.0)
-            cv2.putText(frame, 'PALLET CARGADO - DONE',
+            cv2.putText(frame, 'PALLET CARGADO - DONE - esperando FSM lift',
                         (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
             self._publish_frame(frame)
             return
@@ -223,11 +250,17 @@ class QRApproach(Node):
             if self._load_dist_done >= LOAD_DIST:
                 self._cmd(0.0, 0.0)
                 self._state = ST_DONE
-                self.get_logger().info('Pallet cargado - DONE')
+                self._load_enabled = False
+
+                self.get_logger().info('LOAD terminado — enviando LOAD_DONE a FSM.')
+
                 done_msg = Bool()
                 done_msg.data = True
                 self._pub_done.publish(done_msg)
-                self._publish_status('DONE')
+
+                # La FSM usará esto para mandar lift y sacar el pallet.
+                self._publish_status('LOAD_DONE')
+
             else:
                 self._cmd(LOAD_SPEED, 0.0)
 
@@ -330,14 +363,34 @@ class QRApproach(Node):
             diag_use = bbox_diagonal(use_pts)
             err_x    = use_cx - frame_cx
 
-            # ¿Llegamos al stop? → inicia LOAD
+            # ¿Llegamos al stop? → pedir preparación de lifter antes de LOAD
             if diag_use >= STOP_DIAG_PX:
                 self._cmd(0.0, 0.0)
-                self._state          = ST_LOAD
-                self._load_start     = self._now()
+
+                # Primera vez que llegamos al punto de carga:
+                # avisamos a la FSM para reset_encoder + conveyor.
+                if not self._ready_to_load_sent:
+                    self._ready_to_load_sent = True
+                    self._load_enabled = False
+                    self._publish_status('READY_TO_LOAD')
+                    self.get_logger().info(
+                        f'Stop alcanzado (diag={diag_use:.1f}px) — READY_TO_LOAD enviado. '
+                        'Esperando reset_encoder + conveyor desde FSM.'
+                    )
+
+                # Mientras la FSM no autorice LOAD, nos quedamos quietos.
+                if not self._load_enabled:
+                    cv2.putText(frame, 'READY_TO_LOAD - esperando FSM/conveyor',
+                                (10, 105), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 220, 255), 2)
+                    self._publish_frame(frame)
+                    return
+
+                # Cuando FSM autoriza, ahora sí inicia LOAD.
+                self._state = ST_LOAD
+                self._load_start = self._now()
                 self._load_last_time = None
                 self._load_dist_done = 0.0
-                self.get_logger().info(f'Stop alcanzado (diag={diag_use:.1f}px) - iniciando CARGA')
+                self.get_logger().info('LOAD autorizado — iniciando avance hardcodeado.')
                 self._publish_frame(frame)
                 return
 

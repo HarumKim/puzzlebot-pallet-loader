@@ -24,6 +24,9 @@ hybrid_a_star_bug0_node:
     - -1.5   # WP0 x
     - 1.0   # WP0 y
     - 180.0   # WP0 yaw deseado en grados
+    - 0.78
+    - 1.04
+    - 0.0
 
     # Orientación final deseada en waypoint
     waypoint_yaw_tolerance_deg: 3.0
