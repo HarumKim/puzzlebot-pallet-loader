@@ -29,7 +29,7 @@ class QRAligner(Node):
         self.declare_parameter('udp_port',           5004)
 
         # Angular — centrado horizontal
-        self.declare_parameter('kp_angular',         0.0010)
+        self.declare_parameter('kp_angular',         0.0012)
         self.declare_parameter('kd_angular',         0.0025)
         self.declare_parameter('max_angular_speed',  0.12)
         self.declare_parameter('angular_dead_zone',  10.0)   # px
@@ -40,7 +40,7 @@ class QRAligner(Node):
         self.declare_parameter('kd_linear',          8.0)
         self.declare_parameter('max_linear_speed',   0.07)
         self.declare_parameter('linear_dead_zone',   0.045)
-        self.declare_parameter('target_area_ratio',  0.30)
+        self.declare_parameter('target_area_ratio',  0.28)
         self.declare_parameter('smooth_alpha_lin',   0.25)
 
         # Perspectiva — perpendicularidad al QR
@@ -55,7 +55,7 @@ class QRAligner(Node):
 
         # Toma de pallet — avance final tras alineación
         self.declare_parameter('take_pallet_speed',    0.04)
-        self.declare_parameter('take_pallet_distance', 0.20)
+        self.declare_parameter('take_pallet_distance', 0.15)
 
         # ── Leer parámetros ───────────────────────────────────────────────────
         cmd_vel_topic       = self.get_parameter('cmd_vel_topic').value
