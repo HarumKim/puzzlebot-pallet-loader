@@ -79,6 +79,10 @@ class HybridAStarBug0Node(Node):
         self.declare_parameter('path_stride', 1) # salto entre puntos de la ruta, mayor para rutas más curvas
         self.declare_parameter('known_obstacle_tolerance', 0.15)
         self.declare_parameter('known_obstacle_angle_window_deg', 20.0)
+        self.declare_parameter('discontinuity_threshold', 0.35)
+        self.declare_parameter('min_tangent_dist', 0.20)
+        self.declare_parameter('goal_cone_deg', 20.0)
+        self.declare_parameter('bf_exit_margin', 0.10)
         
         # flat = list(self.get_parameter('waypoints').value)
         # self.waypoints = [(flat[i], flat[i + 1]) for i in range(0, len(flat) - 1, 2)]
@@ -115,6 +119,10 @@ class HybridAStarBug0Node(Node):
         self._known_obstacle_angle_window = math.radians(
             float(self.get_parameter('known_obstacle_angle_window_deg').value)
         )
+        self._discontinuity_threshold = float(self.get_parameter('discontinuity_threshold').value)
+        self._min_tangent_dist = float(self.get_parameter('min_tangent_dist').value)
+        self._goal_cone = math.radians(float(self.get_parameter('goal_cone_deg').value))
+        self._bf_exit_margin = float(self.get_parameter('bf_exit_margin').value)
 
         if len(self._obstacles) % 4 != 0:
             self.get_logger().error(
@@ -142,6 +150,9 @@ class HybridAStarBug0Node(Node):
         self._bug0_side = None
         self._dynamic_obstacles = []  # (x, y) world coords of unknown obstacles found by Bug0
         self._unknown_obs_frames = 0  # consecutive frames with unknown obstacle in front
+        self._d_bf = float('inf')     # distance to goal when entering tangent boundary follow
+        self._bf_traveled = 0.0       # distance traveled in tangent boundary/steer states
+        self._prev_pos_bf = None      # previous position for bf_traveled measurement
 
         self.declare_parameter('enable_keyboard', False)
         self._enable_keyboard = bool(self.get_parameter('enable_keyboard').value)
@@ -316,7 +327,7 @@ class HybridAStarBug0Node(Node):
                     return
 
                 self._unknown_obs_frames = 0
-                self._state = 'BUG0_AVOID'
+                self._state = 'TANGENT_STEER'
                 self._wall_entry_pos = (self.x, self.y)
                 self._corner_entry_pos = None
                 self._bug0_side = self._choose_bug0_side()
@@ -326,29 +337,44 @@ class HybridAStarBug0Node(Node):
                     self.get_logger().info(
                         f'Unknown obstacle recorded at ({obs[0]:.2f}, {obs[1]:.2f}).'
                     )
+                self._d_bf = math.hypot(gx - self.x, gy - self.y)
+                self._bf_traveled = 0.0
+                self._prev_pos_bf = (self.x, self.y)
                 return
 
             self._unknown_obs_frames = 0
             self._follow_astar_path()
 
-        elif self._state == 'BUG0_AVOID':
-            if self._can_return_to_path(front):
-                self.get_logger().info('Path is clear — returning to A* path.')
-                self._state = 'FOLLOW_PATH'
-                self._wall_entry_pos = None
+        elif self._state == 'TANGENT_STEER':
+            self._update_bf_travel()
+            dist_to_goal = math.hypot(gx - self.x, gy - self.y)
+
+            if front < OBS_THRESHOLD:
+                self._state = 'TANGENT_BOUNDARY'
                 self._corner_entry_pos = None
-                self._bug0_side = None
-                # Force replan so A* avoids the newly recorded dynamic obstacle
-                self.path = []
-                self.path_idx = 0
                 return
 
-            if self._distance_from_current_path_point() > REPLAN_DISTANCE:
-                self.get_logger().info('Robot moved far from path — replanning A*.')
-                self.path = []
-                self.path_idx = 0
-                self._state = 'FOLLOW_PATH'
+            if self._path_clear_to_waypoint(gx, gy, dist_to_goal):
+                self.get_logger().info('Tangent steer: path clear — returning to A*.')
+                self._exit_tangent()
                 return
+
+            goal_angle = math.atan2(gy - self.y, gx - self.x)
+            steer = self._best_steer_angle(gx, gy, goal_angle)
+            self._steer_to_angle(steer, dist_to_goal)
+
+        elif self._state == 'TANGENT_BOUNDARY':
+            self._update_bf_travel()
+
+            if self._distance_from_current_path_point() > REPLAN_DISTANCE:
+                self.get_logger().info('Tangent boundary: drifted too far — replanning.')
+                self._exit_tangent()
+                return
+
+            if self._bf_traveled > WALL_FOLLOW_MIN_DIST:
+                dist_to_goal = math.hypot(gx - self.x, gy - self.y)
+                if self._should_exit_boundary(gx, gy, dist_to_goal):
+                    return
 
             self._bug0_follow_wall(front)
 
@@ -376,26 +402,6 @@ class HybridAStarBug0Node(Node):
 
         self._go_to_point(tx, ty, dist)
 
-    def _can_return_to_path(self, front: float):
-        wall_traveled = math.hypot(
-            self.x - self._wall_entry_pos[0],
-            self.y - self._wall_entry_pos[1],
-        ) if self._wall_entry_pos else float('inf')
-
-        # Both front and the wall side must be clear — prevents returning after
-        # a simple backup where the obstacle is still immediately beside the robot.
-        # Heading check removed: exit forces a full A* replan that re-aligns the robot.
-        if self._bug0_side == 'left':
-            side_clear = self._min_range(50, 135) > OBS_EXIT_THRESHOLD
-        else:
-            side_clear = self._min_range(-135, -50) > OBS_EXIT_THRESHOLD
-
-        return (
-            front > OBS_EXIT_THRESHOLD
-            and side_clear
-            and wall_traveled > WALL_FOLLOW_MIN_DIST
-        )
-    
     def _choose_bug0_side(self):
         left = self._min_range(25, 115)
         front_left = self._min_range(10, 60)
@@ -501,6 +507,114 @@ class HybridAStarBug0Node(Node):
                 MAX_ANG
             )
             self._cmd(MAX_LIN * 0.8, angular)
+
+    def _update_bf_travel(self):
+        if self._prev_pos_bf is not None:
+            self._bf_traveled += math.hypot(
+                self.x - self._prev_pos_bf[0],
+                self.y - self._prev_pos_bf[1],
+            )
+        self._prev_pos_bf = (self.x, self.y)
+
+    def _exit_tangent(self):
+        self._state = 'FOLLOW_PATH'
+        self._wall_entry_pos = None
+        self._corner_entry_pos = None
+        self._bug0_side = None
+        self._d_bf = float('inf')
+        self._bf_traveled = 0.0
+        self._prev_pos_bf = None
+        self.path = []
+        self.path_idx = 0
+
+    def _find_tangent_points(self):
+        if self._scan is None:
+            return []
+        scan = self._scan
+        n = len(scan.ranges)
+        offset = math.radians(SCAN_ANGLE_OFFSET_DEG)
+        valid = [
+            r if (math.isfinite(r) and scan.range_min < r < scan.range_max) else None
+            for r in scan.ranges
+        ]
+        tangents = []
+        for i in range(n - 1):
+            ri, rj = valid[i], valid[i + 1]
+            if ri is None or rj is None:
+                continue
+            if abs(rj - ri) < self._discontinuity_threshold:
+                continue
+            idx, r_near = (i, ri) if ri <= rj else (i + 1, rj)
+            if r_near < self._min_tangent_dist:
+                continue
+            laser_angle = scan.angle_min + idx * scan.angle_increment
+            local_angle = laser_angle + offset      # robot frame (corrected for mount)
+            world_angle = self.yaw + local_angle    # world frame
+            tx = self.x + r_near * math.cos(world_angle)
+            ty = self.y + r_near * math.sin(world_angle)
+            tangents.append((tx, ty))
+        return tangents
+
+    def _path_clear_to_waypoint(self, gx: float, gy: float, dist: float) -> bool:
+        if self._scan is None:
+            return False
+        scan = self._scan
+        offset = math.radians(SCAN_ANGLE_OFFSET_DEG)
+        goal_angle_local = _wrap(math.atan2(gy - self.y, gx - self.x) - self.yaw)
+        for i, r in enumerate(scan.ranges):
+            if not (math.isfinite(r) and scan.range_min < r < scan.range_max):
+                continue
+            local_angle = _wrap(scan.angle_min + i * scan.angle_increment + offset)
+            if abs(_wrap(local_angle - goal_angle_local)) <= self._goal_cone:
+                if r < dist - self._goal_tol:
+                    return False
+        return True
+
+    def _best_steer_angle(self, gx: float, gy: float, goal_angle: float) -> float:
+        tangents = self._find_tangent_points()
+        if not tangents:
+            return goal_angle
+        best_angle, best_h = goal_angle, float('inf')
+        for tx, ty in tangents:
+            h = math.hypot(tx - self.x, ty - self.y) + math.hypot(tx - gx, ty - gy)
+            if h < best_h:
+                best_h = h
+                best_angle = math.atan2(ty - self.y, tx - self.x)
+        return best_angle
+
+    def _steer_to_angle(self, world_angle: float, dist: float):
+        heading_err = _wrap(world_angle - self.yaw)
+        angular = _clamp(KP_ANG * heading_err, -MAX_ANG, MAX_ANG)
+        linear = _clamp(KP_LIN * dist, 0.0, MAX_LIN)
+        if abs(heading_err) > math.radians(45):
+            linear = MAX_LIN * 0.15
+        self._cmd(linear, angular)
+
+    def _should_exit_boundary(self, gx: float, gy: float, dist: float) -> bool:
+        if self._path_clear_to_waypoint(gx, gy, dist):
+            self.get_logger().info('Boundary exit: path to goal is clear.')
+            self._exit_tangent()
+            return True
+        for tx, ty in self._find_tangent_points():
+            d_tg = math.hypot(tx - gx, ty - gy)
+            d_rt = math.hypot(tx - self.x, ty - self.y)
+            if d_tg >= self._d_bf - self._bf_exit_margin:
+                continue
+            if d_rt < self._min_tangent_dist:
+                continue
+            t_angle_local = _wrap(math.atan2(ty - self.y, tx - self.x) - self.yaw)
+            front_to_t = self._min_range(
+                math.degrees(t_angle_local) - 10,
+                math.degrees(t_angle_local) + 10,
+            )
+            if front_to_t > d_rt - 0.10:
+                self.get_logger().info(
+                    f'Boundary exit via tangent ({tx:.2f},{ty:.2f}) '
+                    f'd(T,goal)={d_tg:.2f} < d_bf={self._d_bf:.2f}.'
+                )
+                self._exit_tangent()
+                return True
+        return False
 
     def _distance_from_current_path_point(self):
         if self.path_idx >= len(self.path):

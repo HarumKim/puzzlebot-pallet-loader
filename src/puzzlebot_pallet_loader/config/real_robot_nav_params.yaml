@@ -55,7 +55,7 @@ hybrid_a_star_bug0_node:
 
     # Radio de inflación alrededor de cada obstáculo en metros.
     # El robot tiene ~0.18 m de radio, 0.20 m da un pequeño margen de seguridad.
-    inflation_radius: 0.2
+    inflation_radius: 0.16
 
     # Cuántos puntos saltar al seguir la ruta A*.
     # 1 = seguir cada punto, 2 = saltar de a 2 (más suave en curvas).

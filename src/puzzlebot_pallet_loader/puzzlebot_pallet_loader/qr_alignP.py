@@ -13,6 +13,7 @@ from gi.repository import Gst
 from pyzbar.pyzbar import decode
 
 import rclpy
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from geometry_msgs.msg import Twist
 from sensor_msgs.msg import CompressedImage
@@ -46,7 +47,7 @@ BLIND_SECS    = 1.0    # segundos que avanza a ciegas antes de rendirse
 
 # Carga de pallet
 LOAD_SPEED    = 0.02   # m/s
-LOAD_DIST     = 0.10   # metros (10 cm)
+LOAD_DIST     = 0.15   # metros (10 cm)
 
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -94,12 +95,8 @@ class QRApproach(Node):
             CompressedImage, '/detection/annotated/compressed', 10)
         self._pub_done = self.create_publisher(Bool, '/qr_align/done', 10)
 
-        pipeline_str = (
-            f'udpsrc port={udp_port} caps="video/mpegts, systemstream=true" ! '
-            'tsdemux latency=0 ! h264parse ! avdec_h264 ! '
-            'videoconvert ! video/x-raw,format=BGR ! '
-            'appsink name=sink emit-signals=true sync=false max-buffers=1 drop=true'
-        )
+        pipeline_str, decoder_name = self._build_pipeline(udp_port)
+        self.get_logger().info(f'Usando decoder H264 de GStreamer: {decoder_name}')
         self._pipeline = Gst.parse_launch(pipeline_str)
         appsink        = self._pipeline.get_by_name('sink')
         appsink.connect('new-sample', self._on_new_sample)
@@ -129,21 +126,6 @@ class QRApproach(Node):
         self.get_logger().info(f'QR Approach listo - STOP_DIAG={STOP_DIAG_PX}px')
 
     # ── GStreamer ─────────────────────────────────────────────────────────────
-    def _load_enable_cb(self, msg: Bool):
-        self._load_enabled = bool(msg.data)
-
-        if self._load_enabled:
-            self.get_logger().info('LOAD enabled by FSM.')
-
-            # Si ya habíamos pedido permiso para cargar, ahora sí arrancamos LOAD.
-            if self._state == ST_APPROACH and self._ready_to_load_sent:
-                self._cmd(0.0, 0.0)
-                self._state = ST_LOAD
-                self._load_start = self._now()
-                self._load_last_time = None
-                self._load_dist_done = 0.0
-                self.get_logger().info('FSM autorizó LOAD — iniciando avance hardcodeado.')
-
     def _enable_cb(self, msg: Bool):
         self._enabled = bool(msg.data)
 
@@ -465,7 +447,7 @@ def main(args=None):
     try:
         rclpy.spin(node)
 
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, ExternalShutdownException):
         pass
 
     finally:
