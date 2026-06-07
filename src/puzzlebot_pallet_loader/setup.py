@@ -42,6 +42,7 @@ setup(
             'aruco_detector_node = puzzlebot_pallet_loader.aruco_detector_node:main',
             'fsm_control_node = puzzlebot_pallet_loader.fsm_control_node:main',
             'qr_align = puzzlebot_pallet_loader.qr_align:main',
+            'qr_alignP = puzzlebot_pallet_loader.qr_alignP:main',
             'mcl_localization_node = puzzlebot_pallet_loader.mcl_localization_node:main',
         ],
     },
