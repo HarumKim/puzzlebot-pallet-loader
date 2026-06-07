@@ -40,20 +40,6 @@ def generate_launch_description():
         parameters=[ekf_aruco_params],
     )
 
-    # navigator = Node(
-    #     package='puzzlebot_pallet_loader',
-    #     executable='hybrid_a_star_bug0_node',
-    #     name='hybrid_a_star_bug0_node',
-    #     output='screen',
-    #     parameters=[
-    #         nav_params,
-    #         {
-    #             'cmd_vel_topic': '/nav/cmd_vel',
-    #             'odom_topic': '/ekf_odom',
-    #             'scan_topic': '/scan',
-    #         },
-    #     ],
-    # )
     navigator = Node(
         package='puzzlebot_pallet_loader',
         executable='hybrid_a_star_bug0_node',
@@ -64,6 +50,7 @@ def generate_launch_description():
             {
                 'cmd_vel_topic': '/nav/cmd_vel',
                 'odom_topic': '/ekf_odom',
+                'scan_topic': '/scan',
                 'enable_keyboard': False,
                 'wait_for_localization_convergence': False,
             },
@@ -72,15 +59,15 @@ def generate_launch_description():
 
     qr_align = Node(
         package='puzzlebot_pallet_loader',
-        executable='qr_align',
-        name='qr_align',
+        executable='qr_alignP',
+        name='qr_alignP',
         output='screen',
         parameters=[
             {
                 'cmd_vel_topic': '/qr_align/cmd_vel',
                 'enable_topic': '/qr_align/enable',
                 'status_topic': '/qr_align/status',
-                'camera_topic': '/camera/image_raw/compressed',
+                'udp_port': 5004,
             }
         ],
     )

@@ -250,7 +250,7 @@ class FSMControlNode(Node):
                 f'Navigation reported waypoint 1 reached/final yaw done: {status}'
             )
             self._publish_stop()
-            self._set_qr_enable(False)
+            self._set_qr_enable(True)
             self.qr_detection_count = 0
             self._transition(self.STATE_WAIT_QR_DETECTION, 'WP1_REACHED_WAITING_QR')
 
@@ -385,7 +385,7 @@ class FSMControlNode(Node):
                 self.pub_cmd_vel.publish(Twist())
 
         elif self.state == self.STATE_WAIT_QR_DETECTION:
-            self._set_qr_enable(False)
+            self._set_qr_enable(True)
             self.pub_cmd_vel.publish(Twist())
 
         elif self.state == self.STATE_QR_ALIGN:

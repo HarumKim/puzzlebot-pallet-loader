@@ -11,6 +11,7 @@ from rclpy.parameter import Parameter
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import LaserScan
+from std_msgs.msg import String
 
 
 DEFAULT_WAYPOINTS = [3.5, 2.7]
@@ -54,6 +55,9 @@ class HybridAStarBug0Node(Node):
         scan_topic = self.get_parameter('scan_topic').value
 
         self._pub = self.create_publisher(Twist, cmd_vel_topic, 10)
+        self.declare_parameter('navigation_status_topic', '/navigation/status')
+        navigation_status_topic = self.get_parameter('navigation_status_topic').value
+        self._nav_status_pub = self.create_publisher(String, navigation_status_topic, 10)
         self.create_subscription(Odometry, odom_topic, self._odom_cb, 10)
         self.create_subscription(LaserScan, scan_topic, self._scan_cb, 10)
 
@@ -175,6 +179,12 @@ class HybridAStarBug0Node(Node):
     def _scan_cb(self, msg: LaserScan):
         self._scan = msg
 
+    def _publish_navigation_status(self, status: str):
+        msg = String()
+        msg.data = status
+        self._nav_status_pub.publish(msg)
+        self.get_logger().info(f'Navigation status: {status}')
+
     def _keyboard_listener(self):
         if not sys.stdin.isatty():
             self.get_logger().warn('No interactive stdin available. Keyboard listener disabled.')
@@ -274,6 +284,8 @@ class HybridAStarBug0Node(Node):
                 f'Waypoint {self.wp_idx} reached with yaw '
                 f'{math.degrees(self.yaw):.1f}°.'
             )
+
+            self._publish_navigation_status('WAYPOINT_REACHED')
 
             self.wp_idx += 1
             self.path = []

@@ -16,7 +16,7 @@ import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist
 from sensor_msgs.msg import CompressedImage
-from std_msgs.msg import Bool
+from std_msgs.msg import Bool, String
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -70,13 +70,26 @@ class QRApproach(Node):
         super().__init__('qr_alignP')
         Gst.init(None)
 
-        self._pub     = self.create_publisher(Twist, 'cmd_vel', 10)
+        self.declare_parameter('cmd_vel_topic', '/qr_align/cmd_vel')
+        self.declare_parameter('enable_topic', '/qr_align/enable')
+        self.declare_parameter('status_topic', '/qr_align/status')
+        self.declare_parameter('udp_port', 5004)
+
+        cmd_vel_topic = self.get_parameter('cmd_vel_topic').value
+        enable_topic = self.get_parameter('enable_topic').value
+        status_topic = self.get_parameter('status_topic').value
+        udp_port = self.get_parameter('udp_port').value
+                
+        self._pub = self.create_publisher(Twist, cmd_vel_topic, 10)
+        self._status_pub = self.create_publisher(String, status_topic, 10)
+        self.create_subscription(Bool, enable_topic, self._enable_cb, 10)
+        self._enabled = False
         self._pub_img = self.create_publisher(
             CompressedImage, '/detection/annotated/compressed', 10)
         self._pub_done = self.create_publisher(Bool, '/qr_align/done', 10)
 
         pipeline_str = (
-            f'udpsrc port={UDP_PORT} caps="video/mpegts, systemstream=true" ! '
+            f'udpsrc port={udp_port} caps="video/mpegts, systemstream=true" ! '
             'tsdemux latency=0 ! h264parse ! avdec_h264 ! '
             'videoconvert ! video/x-raw,format=BGR ! '
             'appsink name=sink emit-signals=true sync=false max-buffers=1 drop=true'
@@ -110,6 +123,16 @@ class QRApproach(Node):
         self.get_logger().info(f'QR Approach listo - STOP_DIAG={STOP_DIAG_PX}px')
 
     # ── GStreamer ─────────────────────────────────────────────────────────────
+    def _enable_cb(self, msg: Bool):
+        self._enabled = bool(msg.data)
+        if not self._enabled:
+            self._cmd(0.0, 0.0)
+
+    def _publish_status(self, status: str):
+        msg = String()
+        msg.data = status
+        self._status_pub.publish(msg)
+
 
     def _on_new_sample(self, sink):
         sample = sink.emit('pull-sample')
@@ -156,6 +179,11 @@ class QRApproach(Node):
                 return
             frame = self._latest_frame.copy()
 
+        if not self._enabled:
+            self._cmd(0.0, 0.0)
+            self._publish_frame(frame)
+            return
+
         fh, fw   = frame.shape[:2]
         frame_cx = fw / 2.0
         frame_cy = fh / 2.0
@@ -199,6 +227,7 @@ class QRApproach(Node):
                 done_msg = Bool()
                 done_msg.data = True
                 self._pub_done.publish(done_msg)
+                self._publish_status('DONE')
             else:
                 self._cmd(LOAD_SPEED, 0.0)
 
@@ -277,6 +306,7 @@ class QRApproach(Node):
                 self._last_pts    = pts
                 self._lost_frames = 0
                 valid             = True
+                self._publish_status('DETECTED')
             else:
                 self._lost_frames += 1
                 reason = 'tamano' if not size_ok else 'salto'
@@ -378,14 +408,30 @@ class QRApproach(Node):
 def main(args=None):
     rclpy.init(args=args)
     node = QRApproach()
+
     try:
         rclpy.spin(node)
+
     except KeyboardInterrupt:
         pass
+
     finally:
-        node._cmd(0.0, 0.0)
-        node.destroy_node()
-        rclpy.shutdown()
+        try:
+            if rclpy.ok():
+                node._cmd(0.0, 0.0)
+        except Exception:
+            pass
+
+        try:
+            node.destroy_node()
+        except Exception:
+            pass
+
+        try:
+            if rclpy.ok():
+                rclpy.shutdown()
+        except Exception:
+            pass
 
 
 if __name__ == '__main__':
