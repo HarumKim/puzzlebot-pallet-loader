@@ -1,7 +1,7 @@
 """
-qr_align_test.py — Aproximación al QR con pyzbar.
+qr_align_test.py - Aproximacion al QR con pyzbar.
 Centra el QR en X y avanza hasta llegar al umbral de diagonal.
-Sin SolvePnP, sin área, sin perspectiva — solo centroide.
+Sin SolvePnP, sin area, sin perspectiva - solo centroide.
 """
 
 import threading
@@ -15,15 +15,17 @@ from pyzbar.pyzbar import decode
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist
+from sensor_msgs.msg import CompressedImage
+from std_msgs.msg import Bool
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Parámetros
+# Parametros
 # ══════════════════════════════════════════════════════════════════════════════
 
 UDP_PORT = 5004
 
-# Detección / filtros
+# Deteccion / filtros
 MIN_DIAG_PX = 30
 MAX_DIAG_PX = 250
 MAX_JUMP_PX = 80
@@ -34,17 +36,17 @@ KP_ANG      = 0.0010
 MAX_ANG     = 0.02
 DZ_ANG      = 15.0
 
-# Control lineal — approach
+# Control lineal - approach
 LINEAR_SPEED  = 0.04
 STOP_DIAG_PX  = 230   # diagonal donde termina approach y empieza carga
 
-# Avance a ciegas (cuando pierde QR y diag aún no llegó al stop)
+# Avance a ciegas (cuando pierde QR y diag aun no llego al stop)
 BLIND_SPEED   = 0.02   # m/s
 BLIND_SECS    = 1.0    # segundos que avanza a ciegas antes de rendirse
 
 # Carga de pallet
 LOAD_SPEED    = 0.02   # m/s
-LOAD_DIST     = 0.15 # metros (10 cm)
+LOAD_DIST     = 0.10   # metros (10 cm)
 
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -68,7 +70,10 @@ class QRApproach(Node):
         super().__init__('qr_alignP')
         Gst.init(None)
 
-        self._pub = self.create_publisher(Twist, 'cmd_vel', 10)
+        self._pub     = self.create_publisher(Twist, 'cmd_vel', 10)
+        self._pub_img = self.create_publisher(
+            CompressedImage, '/detection/annotated/compressed', 10)
+        self._pub_done = self.create_publisher(Bool, '/qr_align/done', 10)
 
         pipeline_str = (
             f'udpsrc port={UDP_PORT} caps="video/mpegts, systemstream=true" ! '
@@ -102,7 +107,7 @@ class QRApproach(Node):
         self._load_last_time  = None
 
         self.create_timer(1.0 / 30.0, self._loop)
-        self.get_logger().info(f'QR Approach listo — STOP_DIAG={STOP_DIAG_PX}px')
+        self.get_logger().info(f'QR Approach listo - STOP_DIAG={STOP_DIAG_PX}px')
 
     # ── GStreamer ─────────────────────────────────────────────────────────────
 
@@ -163,14 +168,13 @@ class QRApproach(Node):
         # ══════════════════════════════════════════════════════════════════════
         if self._state == ST_DONE:
             self._cmd(0.0, 0.0)
-            cv2.putText(frame, 'PALLET CARGADO — DONE',
+            cv2.putText(frame, 'PALLET CARGADO - DONE',
                         (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
-            cv2.imshow('QR Approach', frame)
-            cv2.waitKey(1)
+            self._publish_frame(frame)
             return
 
         # ══════════════════════════════════════════════════════════════════════
-        # LOAD — avanza 10cm fijos sin visión
+        # LOAD - avanza 10cm fijos sin vision
         # ══════════════════════════════════════════════════════════════════════
         if self._state == ST_LOAD:
             now = self._now()
@@ -191,16 +195,18 @@ class QRApproach(Node):
             if self._load_dist_done >= LOAD_DIST:
                 self._cmd(0.0, 0.0)
                 self._state = ST_DONE
-                self.get_logger().info('Pallet cargado — DONE')
+                self.get_logger().info('Pallet cargado - DONE')
+                done_msg = Bool()
+                done_msg.data = True
+                self._pub_done.publish(done_msg)
             else:
                 self._cmd(LOAD_SPEED, 0.0)
 
-            cv2.imshow('QR Approach', frame)
-            cv2.waitKey(1)
+            self._publish_frame(frame)
             return
 
         # ══════════════════════════════════════════════════════════════════════
-        # BLIND — avanza a ciegas buscando el QR
+        # BLIND - avanza a ciegas buscando el QR
         # ══════════════════════════════════════════════════════════════════════
         if self._state == ST_BLIND:
             now     = self._now()
@@ -217,22 +223,21 @@ class QRApproach(Node):
                 diag = bbox_diagonal(pts)
 
                 if MIN_DIAG_PX <= diag <= MAX_DIAG_PX:
-                    # Recuperó el QR — vuelve a APPROACH
+                    # Recupero el QR - vuelve a APPROACH
                     self._last_cx     = cx
                     self._last_cy     = cy
                     self._last_pts    = pts
                     self._lost_frames = 0
                     self._state       = ST_APPROACH
-                    self.get_logger().info(f'QR recuperado en BLIND (diag={diag:.0f}px) — vuelve a APPROACH')
-                    cv2.imshow('QR Approach', frame)
-                    cv2.waitKey(1)
+                    self.get_logger().info(f'QR recuperado en BLIND (diag={diag:.0f}px) - vuelve a APPROACH')
+                    self._publish_frame(frame)
                     return
 
-            # Tiempo agotado sin recuperar QR — para definitivamente
+            # Tiempo agotado sin recuperar QR - para definitivamente
             if elapsed >= BLIND_SECS:
                 self._cmd(0.0, 0.0)
-                self.get_logger().warn('BLIND agotado — QR no recuperado, PARADO')
-                cv2.putText(frame, 'BLIND AGOTADO — PARADO',
+                self.get_logger().warn('BLIND agotado - QR no recuperado, PARADO')
+                cv2.putText(frame, 'BLIND AGOTADO - PARADO',
                             (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
                 # Resetea para que el operador pueda reintentar
                 self._blind_start = None
@@ -246,12 +251,11 @@ class QRApproach(Node):
                 cv2.putText(frame, 'BUSCANDO QR (avance ciego)',
                             (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 180, 255), 2)
 
-            cv2.imshow('QR Approach', frame)
-            cv2.waitKey(1)
+            self._publish_frame(frame)
             return
 
         # ══════════════════════════════════════════════════════════════════════
-        # APPROACH — detección + control
+        # APPROACH - deteccion + control
         # ══════════════════════════════════════════════════════════════════════
         codes = decode(frame)
         valid = False
@@ -275,13 +279,13 @@ class QRApproach(Node):
                 valid             = True
             else:
                 self._lost_frames += 1
-                reason = 'tamaño' if not size_ok else 'salto'
+                reason = 'tamano' if not size_ok else 'salto'
                 cv2.putText(frame, f'DESCARTADO ({reason})  diag={diag:.0f}px',
                             (10, 130), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (0, 80, 255), 1)
         else:
             self._lost_frames += 1
 
-        # ── Decidir posición ──────────────────────────────────────────────────
+        # ── Decidir posicion ──────────────────────────────────────────────────
         using_last = False
         if valid:
             use_cx, use_cy, use_pts = self._last_cx, self._last_cy, self._last_pts
@@ -303,9 +307,8 @@ class QRApproach(Node):
                 self._load_start     = self._now()
                 self._load_last_time = None
                 self._load_dist_done = 0.0
-                self.get_logger().info(f'Stop alcanzado (diag={diag_use:.1f}px) — iniciando CARGA')
-                cv2.imshow('QR Approach', frame)
-                cv2.waitKey(1)
+                self.get_logger().info(f'Stop alcanzado (diag={diag_use:.1f}px) - iniciando CARGA')
+                self._publish_frame(frame)
                 return
 
             # Angular
@@ -346,14 +349,25 @@ class QRApproach(Node):
         else:
             # Lost frames agotados → BLIND
             self._cmd(0.0, 0.0)
-            cv2.putText(frame, 'QR PERDIDO — iniciando BLIND',
+            cv2.putText(frame, 'QR PERDIDO - iniciando BLIND',
                         (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.70, (0, 0, 255), 2)
             self._state       = ST_BLIND
             self._blind_start = self._now()
-            self.get_logger().warn('QR perdido — entrando a BLIND ADVANCE')
+            self.get_logger().warn('QR perdido - entrando a BLIND ADVANCE')
 
+        self._publish_frame(frame)
+
+    def _publish_frame(self, frame):
         cv2.imshow('QR Approach', frame)
         cv2.waitKey(1)
+        ok, buf = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+        if not ok:
+            return
+        msg = CompressedImage()
+        msg.header.stamp  = self.get_clock().now().to_msg()
+        msg.format        = 'jpeg'
+        msg.data          = buf.tobytes()
+        self._pub_img.publish(msg)
 
     def destroy_node(self):
         self._pipeline.set_state(Gst.State.NULL)

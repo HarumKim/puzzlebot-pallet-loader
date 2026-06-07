@@ -1,147 +1,141 @@
+"""
+qr_align_test.py - Aproximacion al QR con pyzbar.
+Centra el QR en X y avanza hasta llegar al umbral de diagonal.
+Sin SolvePnP, sin area, sin perspectiva - solo centroide.
+"""
+
 import threading
 import cv2
 import numpy as np
-import rclpy
 import gi
 gi.require_version('Gst', '1.0')
 from gi.repository import Gst
+from pyzbar.pyzbar import decode
+
+import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist
+from sensor_msgs.msg import CompressedImage
+from std_msgs.msg import Bool
+from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
+
+_QOS_IMG = QoSProfile(
+    reliability=ReliabilityPolicy.BEST_EFFORT,
+    history=HistoryPolicy.KEEP_LAST,
+    depth=1,
+)
 
 
-# ── Estados FSM ──────────────────────────────────────────────────────────────
-STATE_ALIGNING    = 'ALINEANDO'
-STATE_PAUSE       = 'PAUSA'        # 2s quieto tras alinearse
-STATE_TAKE_PALLET = 'TOMA_PALLET'
-STATE_DONE        = 'DONE'
+# ══════════════════════════════════════════════════════════════════════════════
+# Parametros
+# ══════════════════════════════════════════════════════════════════════════════
 
-PAUSE_SECS = 2.0   # ← ajusta aquí si quieres más o menos pausa
+UDP_PORT = 5004
 
-# ── Sub-estados maniobra perspectiva ─────────────────────────────────────────
-PERSP_IDLE    = 0
-PERSP_REVERSE = 1
-PERSP_FORWARD = 2
+# Deteccion / filtros
+MIN_DIAG_PX = 30
+MAX_DIAG_PX = 250
+MAX_JUMP_PX = 80
+MAX_LOST    = 20     # frames lost antes de pasar a BLIND_ADVANCE
+
+# Control angular
+KP_ANG      = 0.0010
+MAX_ANG     = 0.02
+DZ_ANG      = 15.0
+
+# Control lineal - approach
+LINEAR_SPEED  = 0.04
+STOP_DIAG_PX  = 230   # diagonal donde termina approach y empieza carga
+
+# Avance a ciegas (cuando pierde QR y diag aun no llego al stop)
+BLIND_SPEED   = 0.02   # m/s
+BLIND_SECS    = 1.0    # segundos que avanza a ciegas antes de rendirse
+
+# Carga de pallet
+LOAD_SPEED    = 0.02   # m/s
+LOAD_DIST     = 0.10   # metros (10 cm)
+
+# ══════════════════════════════════════════════════════════════════════════════
+
+# Estados
+ST_APPROACH     = 'APPROACH'
+ST_PARALLEL     = 'PARALLEL'   # avanza recto ignorando QR de lado
+ST_TURN_IN      = 'TURN_IN'    # gira a la derecha buscando QR de frente
+ST_BLIND        = 'BLIND'      # avanza a ciegas buscando QR
+ST_LOAD         = 'LOAD'       # carga pallet 10cm
+ST_DONE         = 'DONE'
+
+# Aspect ratio minimo para considerar QR de frente (no de lado)
+# De frente bbox_w/bbox_h ~1.0, de lado puede bajar a 0.4-0.5
+MIN_ASPECT_FRONT = 0.65   # ajusta segun pruebas
+
+# Velocidad de giro al buscar QR de frente
+TURN_IN_SPEED    = 0.15   # rad/s hacia la derecha (negativo = derecha en ROS)
+PARALLEL_SPEED   = 0.04   # m/s avance recto en estado PARALLEL
 
 
-class QRAligner(Node):
+def bbox_diagonal(pts):
+    xs = [p[0] for p in pts]
+    ys = [p[1] for p in pts]
+    w  = max(xs) - min(xs)
+    h  = max(ys) - min(ys)
+    return float(np.sqrt(w * w + h * h))
+
+
+def bbox_aspect(pts):
+    """Aspect ratio bbox_w / bbox_h. ~1.0 de frente, < 0.6 de lado."""
+    xs = [p[0] for p in pts]
+    ys = [p[1] for p in pts]
+    w  = max(xs) - min(xs)
+    h  = max(ys) - min(ys)
+    if h < 1:
+        return 1.0
+    return float(w) / float(h)
+
+
+class QRApproach(Node):
     def __init__(self):
-        super().__init__('qr_aligner')
+        super().__init__('qr_approach')
         Gst.init(None)
 
-        self.declare_parameter('cmd_vel_topic',      'cmd_vel')
-        self.declare_parameter('udp_port',           5004)
+        self._pub     = self.create_publisher(Twist, 'cmd_vel', 10)
+        self._pub_img = self.create_publisher(
+            CompressedImage, '/detection/annotated/compressed', _QOS_IMG)
+        self._pub_done = self.create_publisher(Bool, '/qr_align/done', 10)
 
-        # Angular — centrado horizontal (PID)
-        self.declare_parameter('kp_angular',         0.0012)
-        self.declare_parameter('ki_angular',         0.0002)
-        self.declare_parameter('kd_angular',         0.0018)
-        self.declare_parameter('max_angular_speed',  0.08)
-        self.declare_parameter('angular_dead_zone',  10.0)
-        self.declare_parameter('smooth_alpha_ang',   0.20)
-        self.declare_parameter('ki_windup_limit',    30.0)
+        pipeline_str = (
+            f'udpsrc port={UDP_PORT} caps="video/mpegts, systemstream=true" ! '
+            'tsdemux latency=0 ! h264parse ! avdec_h264 ! '
+            'videoconvert ! video/x-raw,format=BGR ! '
+            'appsink name=sink emit-signals=true sync=false max-buffers=1 drop=true'
+        )
+        self._pipeline = Gst.parse_launch(pipeline_str)
+        appsink        = self._pipeline.get_by_name('sink')
+        appsink.connect('new-sample', self._on_new_sample)
 
-        # Linear — distancia por área
-        self.declare_parameter('kp_linear',          2.0)
-        self.declare_parameter('kd_linear',          8.0)
-        self.declare_parameter('max_linear_speed',   0.04)
-        self.declare_parameter('linear_dead_zone',   0.045)
-        self.declare_parameter('target_area_ratio',  0.28)
-        self.declare_parameter('smooth_alpha_lin',   0.25)
-
-        # Perspectiva
-        self.declare_parameter('kp_persp',           0.15)
-        self.declare_parameter('persp_dead_zone',    0.04)
-        self.declare_parameter('persp_min_cmd',      0.04)
-
-        # Maniobra de recule
-        self.declare_parameter('persp_reverse_speed',    0.05)
-        self.declare_parameter('persp_reverse_distance', 0.15)
-        self.declare_parameter('persp_angular_speed',    0.08)
-        self.declare_parameter('persp_forward_speed',    0.06)
-
-        # Toma de pallet
-        self.declare_parameter('take_pallet_speed',    0.04)
-        self.declare_parameter('take_pallet_distance', 0.15)
-
-        # ── Leer parámetros ───────────────────────────────────────────────────
-        cmd_vel_topic      = self.get_parameter('cmd_vel_topic').value
-        udp_port           = self.get_parameter('udp_port').value
-        self._kp_ang       = self.get_parameter('kp_angular').value
-        self._ki_ang       = self.get_parameter('ki_angular').value
-        self._kd_ang       = self.get_parameter('kd_angular').value
-        self._max_ang      = self.get_parameter('max_angular_speed').value
-        self._dz_ang       = self.get_parameter('angular_dead_zone').value
-        self._alpha_ang    = self.get_parameter('smooth_alpha_ang').value
-        self._windup_lim   = self.get_parameter('ki_windup_limit').value
-        self._kp_lin       = self.get_parameter('kp_linear').value
-        self._kd_lin       = self.get_parameter('kd_linear').value
-        self._max_lin      = self.get_parameter('max_linear_speed').value
-        self._dz_lin       = self.get_parameter('linear_dead_zone').value
-        self._target_ratio = self.get_parameter('target_area_ratio').value
-        self._alpha_lin    = self.get_parameter('smooth_alpha_lin').value
-        self._kp_persp     = self.get_parameter('kp_persp').value
-        self._dz_persp     = self.get_parameter('persp_dead_zone').value
-        self._persp_min    = self.get_parameter('persp_min_cmd').value
-        self._pr_speed     = self.get_parameter('persp_reverse_speed').value
-        self._pr_distance  = self.get_parameter('persp_reverse_distance').value
-        self._pr_ang_speed = self.get_parameter('persp_angular_speed').value
-        self._pf_speed     = self.get_parameter('persp_forward_speed').value
-        self._tp_speed     = self.get_parameter('take_pallet_speed').value
-        self._tp_distance  = self.get_parameter('take_pallet_distance').value
-
-        self._detector     = cv2.QRCodeDetector()
-        self._pub          = self.create_publisher(Twist, cmd_vel_topic, 10)
         self._latest_frame = None
         self._lock         = threading.Lock()
 
-        # Filtros EMA
-        self._s_err_x     = 0.0
-        self._s_err_area  = 0.0
-        self._s_angular   = 0.0
-        self._s_persp     = 0.0
-        self._initialized = False
+        if self._pipeline.set_state(Gst.State.PLAYING) == Gst.StateChangeReturn.FAILURE:
+            self.get_logger().error('No se pudo iniciar el pipeline GStreamer')
 
-        # Derivativo
-        self._prev_err_area = 0.0
-        self._prev_err_x    = 0.0
-
-        # Integral angular
-        self._i_err_x   = 0.0
-        self._prev_time = None
+        # Last-known
+        self._last_cx     = None
+        self._last_cy     = None
+        self._last_pts    = None
+        self._lost_frames = 0
 
         # FSM
-        self._state            = STATE_ALIGNING
-        self._pause_start      = None   # timestamp de entrada a PAUSA
-        self._tp_distance_done = 0.0
-        self._tp_last_time     = None
+        self._state = ST_APPROACH
 
-        # Sub-FSM maniobra perspectiva
-        self._persp_phase      = PERSP_IDLE
-        self._persp_dist_done  = 0.0
-        self._persp_last_time  = None
-        self._persp_sign       = 0.0
-        self._persp_fwd_target = 0.0
+        # Timers de fase
+        self._blind_start     = None   # timestamp inicio BLIND
+        self._load_start      = None   # timestamp inicio LOAD
+        self._load_dist_done  = 0.0
+        self._load_last_time  = None
 
-        pipeline_str = (
-            f"udpsrc port={udp_port} caps=\"video/mpegts, systemstream=true\" ! "
-            "tsdemux latency=0 ! h264parse ! avdec_h264 ! "
-            "videoconvert ! video/x-raw,format=BGR ! "
-            "appsink name=sink emit-signals=true sync=false max-buffers=1 drop=true"
-        )
-        self._pipeline = Gst.parse_launch(pipeline_str)
-        self._appsink  = self._pipeline.get_by_name('sink')
-        self._appsink.connect('new-sample', self._on_new_sample)
-
-        ret = self._pipeline.set_state(Gst.State.PLAYING)
-        if ret == Gst.StateChangeReturn.FAILURE:
-            self.get_logger().error('No se pudo iniciar el pipeline GStreamer!')
-        else:
-            self.get_logger().info(
-                f'QR Aligner listo | area={self._target_ratio:.2f} | '
-                f'pallet={self._tp_distance*100:.0f}cm | pausa={PAUSE_SECS:.0f}s'
-            )
-
-        self.create_timer(1.0 / 30.0, self._process_frame)
+        self.create_timer(1.0 / 30.0, self._loop)
+        self.get_logger().info(f'QR Approach listo - STOP_DIAG={STOP_DIAG_PX}px')
 
     # ── GStreamer ─────────────────────────────────────────────────────────────
 
@@ -152,359 +146,263 @@ class QRAligner(Node):
         buf    = sample.get_buffer()
         caps   = sample.get_caps()
         struct = caps.get_structure(0)
-        width  = struct.get_value('width')
-        height = struct.get_value('height')
-        ok, map_info = buf.map(Gst.MapFlags.READ)
+        w      = struct.get_value('width')
+        h      = struct.get_value('height')
+        ok, mi = buf.map(Gst.MapFlags.READ)
         if not ok:
             return Gst.FlowReturn.ERROR
-        frame = np.frombuffer(map_info.data, dtype=np.uint8).reshape(height, width, 3).copy()
-        buf.unmap(map_info)
+        frame = np.frombuffer(mi.data, dtype=np.uint8).reshape(h, w, 3).copy()
+        buf.unmap(mi)
         with self._lock:
             self._latest_frame = frame
         return Gst.FlowReturn.OK
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 
-    @staticmethod
-    def _polygon_area(pts):
-        n, area = len(pts), 0.0
-        for i in range(n):
-            j = (i + 1) % n
-            area += pts[i, 0] * pts[j, 1]
-            area -= pts[j, 0] * pts[i, 1]
-        return abs(area) / 2.0
-
-    @staticmethod
-    def _perspective_error(pts):
-        tl, tr, br, bl = pts[0], pts[1], pts[2], pts[3]
-        h_left  = float(np.linalg.norm(bl.astype(float) - tl.astype(float)))
-        h_right = float(np.linalg.norm(br.astype(float) - tr.astype(float)))
-        denom = h_left + h_right
-        if denom < 1e-6:
-            return 0.0
-        return (h_right - h_left) / denom
-
-    def _now_sec(self):
+    def _now(self):
         return self.get_clock().now().nanoseconds * 1e-9
 
-    def _reset_pid(self):
-        self._i_err_x   = 0.0
-        self._prev_time = None
-        self._s_angular = 0.0
+    def _cmd(self, linear, angular):
+        t = Twist()
+        t.linear.x  = float(linear)
+        t.angular.z = float(angular)
+        self._pub.publish(t)
 
-    # ── Sub-FSM: maniobra de perspectiva ─────────────────────────────────────
-
-    def _tick_persp_maneuver(self, frame):
-        now = self._now_sec()
-        if self._persp_last_time is None:
-            self._persp_last_time = now
-            return False
-        dt = now - self._persp_last_time
-        self._persp_last_time = now
-
-        if self._persp_phase == PERSP_REVERSE:
-            self._persp_dist_done += self._pr_speed * dt
-            self._publish_cmd(-self._pr_speed, self._persp_sign * self._pr_ang_speed)
-            pct = min(self._persp_dist_done / self._pr_distance * 100.0, 100.0)
-            cv2.putText(frame, 'MANIOBRA: RECULANDO',
-                        (10, 45), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 165, 255), 2)
-            cv2.putText(frame, f'{self._persp_dist_done*100:.1f} / {self._pr_distance*100:.0f} cm  ({pct:.0f}%)',
-                        (10, 72), cv2.FONT_HERSHEY_SIMPLEX, 0.50, (0, 200, 255), 1)
-            self._draw_progress(frame, pct, (0, 165, 255))
-            if self._persp_dist_done >= self._pr_distance:
-                self._persp_fwd_target = self._persp_dist_done
-                self._persp_dist_done  = 0.0
-                self._persp_phase      = PERSP_FORWARD
-            return False
-
-        if self._persp_phase == PERSP_FORWARD:
-            self._persp_dist_done += self._pf_speed * dt
-            self._publish_cmd(self._pf_speed, 0.0)
-            pct = min(self._persp_dist_done / self._persp_fwd_target * 100.0, 100.0)
-            cv2.putText(frame, 'MANIOBRA: AVANZANDO',
-                        (10, 45), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 220, 100), 2)
-            cv2.putText(frame, f'{self._persp_dist_done*100:.1f} / {self._persp_fwd_target*100:.0f} cm  ({pct:.0f}%)',
-                        (10, 72), cv2.FONT_HERSHEY_SIMPLEX, 0.50, (0, 220, 100), 1)
-            self._draw_progress(frame, pct, (0, 220, 100))
-            if self._persp_dist_done >= self._persp_fwd_target:
-                self._persp_phase     = PERSP_IDLE
-                self._persp_dist_done = 0.0
-                self._persp_last_time = None
-                self._initialized     = False
-                self._reset_pid()
-                return True
-            return False
-
-        return True
-
-    @staticmethod
-    def _draw_progress(frame, pct, color):
-        bx, by, bw, bh = 10, 82, 280, 12
-        cv2.rectangle(frame, (bx, by), (bx + bw, by + bh), (50, 50, 50), -1)
-        cv2.rectangle(frame, (bx, by), (bx + int(bw * pct / 100.0), by + bh), color, -1)
-
-    # ── TOMA_PALLET ───────────────────────────────────────────────────────────
-
-    def _tick_take_pallet(self, frame):
-        now = self._now_sec()
-        if self._tp_last_time is None:
-            self._tp_last_time = now
-            self._publish_cmd(self._tp_speed, 0.0)
-            return False
-        dt = now - self._tp_last_time
-        self._tp_last_time     = now
-        self._tp_distance_done += self._tp_speed * dt
-        finished = self._tp_distance_done >= self._tp_distance
-        self._publish_cmd(0.0 if finished else self._tp_speed, 0.0)
-        pct = min(self._tp_distance_done / self._tp_distance * 100.0, 100.0)
-        cv2.putText(frame, 'TOMA PALLET',
-                    (10, 45), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 140, 255), 2)
-        cv2.putText(frame, f'{self._tp_distance_done*100:.1f} / {self._tp_distance*100:.0f} cm  ({pct:.0f}%)',
-                    (10, 75), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 200, 255), 1)
-        self._draw_progress(frame, pct, (0, 200, 255))
-        return finished
+    def _draw_progress(self, frame, pct, color, y, label):
+        fh, fw = frame.shape[:2]
+        bx, bw, bh = 10, 220, 10
+        cv2.rectangle(frame, (bx, y), (bx + bw, y + bh), (50, 50, 50), -1)
+        cv2.rectangle(frame, (bx, y), (bx + int(bw * pct / 100), y + bh), color, -1)
+        cv2.putText(frame, label, (bx, y - 4),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.40, color, 1)
 
     # ── Loop principal ────────────────────────────────────────────────────────
 
-    def _process_frame(self):
+    def _loop(self):
         with self._lock:
             if self._latest_frame is None:
                 return
             frame = self._latest_frame.copy()
 
-        frame_h, frame_w = frame.shape[:2]
-        frame_area = frame_h * frame_w
-        frame_cx   = frame_w / 2.0
+        fh, fw   = frame.shape[:2]
+        frame_cx = fw / 2.0
+        frame_cy = fh / 2.0
 
-        # ── DONE ──────────────────────────────────────────────────────────────
-        if self._state == STATE_DONE:
-            cv2.putText(frame, 'DONE — pallet tomado :)',
-                        (10, 45), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
-            cv2.imshow('QR Aligner', frame)
-            cv2.waitKey(1)
+        cv2.line(frame, (int(frame_cx), 0), (int(frame_cx), fh), (60, 60, 60), 1)
+        cv2.line(frame, (0, int(frame_cy)), (fw, int(frame_cy)), (60, 60, 60), 1)
+
+        # ══════════════════════════════════════════════════════════════════════
+        # DONE
+        # ══════════════════════════════════════════════════════════════════════
+        if self._state == ST_DONE:
+            self._cmd(0.0, 0.0)
+            cv2.putText(frame, 'PALLET CARGADO - DONE',
+                        (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+            self._publish_frame(frame)
             return
 
-        data, points, _ = self._detector.detectAndDecode(frame)
-        cv2.line(frame, (int(frame_cx), 0), (int(frame_cx), frame_h), (80, 80, 80), 1)
+        # ══════════════════════════════════════════════════════════════════════
+        # LOAD - avanza 10cm fijos sin vision
+        # ══════════════════════════════════════════════════════════════════════
+        if self._state == ST_LOAD:
+            now = self._now()
+            if self._load_last_time is None:
+                self._load_last_time = now
 
-        # ── TOMA_PALLET ───────────────────────────────────────────────────────
-        if self._state == STATE_TAKE_PALLET:
-            if self._tick_take_pallet(frame):
-                self._state = STATE_DONE
-                self.get_logger().info('Pallet tomado — DONE')
-            cv2.imshow('QR Aligner', frame)
-            cv2.waitKey(1)
-            return
+            dt = now - self._load_last_time
+            self._load_last_time  = now
+            self._load_dist_done += LOAD_SPEED * dt
 
-        # ── PAUSA: quieto N segundos antes de avanzar ─────────────────────────
-        if self._state == STATE_PAUSE:
-            self._publish_cmd(0.0, 0.0)
-            elapsed   = self._now_sec() - self._pause_start
-            remaining = max(0.0, PAUSE_SECS - elapsed)
-            pct_done  = min(elapsed / PAUSE_SECS * 100.0, 100.0)
+            pct = min(self._load_dist_done / LOAD_DIST * 100.0, 100.0)
+            self._draw_progress(frame, pct, (0, 140, 255), fh - 28,
+                                f'CARGA {self._load_dist_done*100:.1f}/{LOAD_DIST*100:.0f}cm ({pct:.0f}%)')
 
-            cv2.putText(frame, 'ALINEADO — PREPARANDO',
-                        (10, 45), cv2.FONT_HERSHEY_SIMPLEX, 0.80, (0, 255, 0), 2)
-            cv2.putText(frame, f'avanzando en {remaining:.1f}s...',
-                        (10, 72), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 220, 100), 1)
-            # Barra que se llena conforme pasa el tiempo
-            bx, by, bw, bh = 10, 82, 280, 12
-            cv2.rectangle(frame, (bx, by), (bx + bw, by + bh), (50, 50, 50), -1)
-            cv2.rectangle(frame, (bx, by),
-                          (bx + int(bw * pct_done / 100.0), by + bh), (0, 255, 0), -1)
+            cv2.putText(frame, 'CARGANDO PALLET',
+                        (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 140, 255), 2)
 
-            if elapsed >= PAUSE_SECS:
-                self._state            = STATE_TAKE_PALLET
-                self._tp_last_time     = None
-                self._tp_distance_done = 0.0
-                self.get_logger().info(f'Pausa terminada — iniciando TOMA_PALLET ({self._tp_distance*100:.0f}cm)')
-
-            cv2.imshow('QR Aligner', frame)
-            cv2.waitKey(1)
-            return
-
-        # ── MANIOBRA PERSPECTIVA activa ───────────────────────────────────────
-        if self._persp_phase != PERSP_IDLE:
-            done = self._tick_persp_maneuver(frame)
-            if done:
-                self._persp_phase = PERSP_IDLE
-            cv2.imshow('QR Aligner', frame)
-            cv2.waitKey(1)
-            return
-
-        # ── ALINEANDO — control normal ────────────────────────────────────────
-        if points is not None:
-            pts     = points[0].astype(int)
-            qr_cx   = float(np.mean(points[0][:, 0]))
-            qr_cy   = float(np.mean(points[0][:, 1]))
-            qr_area = self._polygon_area(points[0])
-
-            err_x_raw     = qr_cx - frame_cx
-            area_ratio    = qr_area / frame_area
-            err_area_raw  = self._target_ratio - area_ratio
-            persp_err_raw = self._perspective_error(points[0])
-
-            now = self._now_sec()
-            dt  = float(np.clip(
-                (now - self._prev_time) if self._prev_time is not None else 0.0,
-                0.0, 0.1))
-            self._prev_time = now
-
-            if not self._initialized:
-                self._s_err_x       = err_x_raw
-                self._s_err_area    = err_area_raw
-                self._s_persp       = persp_err_raw
-                self._s_angular     = 0.0
-                self._i_err_x       = 0.0
-                self._prev_err_area = err_area_raw
-                self._prev_err_x    = err_x_raw
-                self._initialized   = True
+            if self._load_dist_done >= LOAD_DIST:
+                self._cmd(0.0, 0.0)
+                self._state = ST_DONE
+                self.get_logger().info('Pallet cargado - DONE')
+                done_msg = Bool()
+                done_msg.data = True
+                self._pub_done.publish(done_msg)
             else:
-                self._s_err_x    = self._alpha_ang * err_x_raw    + (1 - self._alpha_ang) * self._s_err_x
-                self._s_err_area = self._alpha_lin * err_area_raw + (1 - self._alpha_lin) * self._s_err_area
-                self._s_persp    = 0.25 * persp_err_raw + 0.75 * self._s_persp
+                self._cmd(LOAD_SPEED, 0.0)
 
-            err_x     = self._s_err_x
-            err_area  = self._s_err_area
-            err_persp = self._s_persp
+            self._publish_frame(frame)
+            return
 
-            d_err_area = err_area - self._prev_err_area
-            d_err_x    = err_x    - self._prev_err_x
-            self._prev_err_area = err_area
-            self._prev_err_x    = err_x
+        # ══════════════════════════════════════════════════════════════════════
+        # BLIND - avanza a ciegas buscando el QR
+        # ══════════════════════════════════════════════════════════════════════
+        if self._state == ST_BLIND:
+            now     = self._now()
+            elapsed = now - self._blind_start
+            pct     = min(elapsed / BLIND_SECS * 100.0, 100.0)
 
-            cx_ok    = abs(err_x)     <= self._dz_ang
-            persp_ok = abs(err_persp) <= self._dz_persp
-            dist_ok  = abs(err_area)  <= self._dz_lin
+            # Intenta detectar mientras avanza
+            codes = decode(frame)
+            if codes:
+                qr   = codes[0]
+                pts  = [(p.x, p.y) for p in qr.polygon]
+                cx   = float(np.mean([p[0] for p in pts]))
+                cy   = float(np.mean([p[1] for p in pts]))
+                diag = bbox_diagonal(pts)
 
-            # Integral angular
-            if not cx_ok:
-                self._i_err_x += err_x * dt
-                self._i_err_x  = float(np.clip(self._i_err_x,
-                                                -self._windup_lim, self._windup_lim))
+                if MIN_DIAG_PX <= diag <= MAX_DIAG_PX:
+                    # Recupero el QR - vuelve a APPROACH
+                    self._last_cx     = cx
+                    self._last_cy     = cy
+                    self._last_pts    = pts
+                    self._lost_frames = 0
+                    self._state       = ST_APPROACH
+                    self.get_logger().info(f'QR recuperado en BLIND (diag={diag:.0f}px) - vuelve a APPROACH')
+                    self._publish_frame(frame)
+                    return
+
+            # Tiempo agotado sin recuperar QR - para definitivamente
+            if elapsed >= BLIND_SECS:
+                self._cmd(0.0, 0.0)
+                self.get_logger().warn('BLIND agotado - QR no recuperado, PARADO')
+                cv2.putText(frame, 'BLIND AGOTADO - PARADO',
+                            (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+                # Resetea para que el operador pueda reintentar
+                self._blind_start = None
+                self._state       = ST_APPROACH
+                self._last_cx = self._last_cy = self._last_pts = None
+                self._lost_frames = 0
             else:
-                self._i_err_x *= 0.90
+                self._cmd(BLIND_SPEED, 0.0)
+                self._draw_progress(frame, pct, (0, 180, 255), fh - 28,
+                                    f'BLIND {elapsed:.1f}/{BLIND_SECS:.0f}s ({pct:.0f}%)')
+                cv2.putText(frame, 'BUSCANDO QR (avance ciego)',
+                            (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 180, 255), 2)
 
-            # ── Transición: todo ok → PAUSA ───────────────────────────────────
-            if cx_ok and dist_ok and persp_ok:
-                self._reset_pid()
-                self._publish_cmd(0.0, 0.0)
-                self._state       = STATE_PAUSE
-                self._pause_start = self._now_sec()
-                self.get_logger().info(f'Alineado — pausa {PAUSE_SECS:.0f}s antes de avanzar')
-                cv2.imshow('QR Aligner', frame)
-                cv2.waitKey(1)
+            self._publish_frame(frame)
+            return
+
+        # ══════════════════════════════════════════════════════════════════════
+        # APPROACH - deteccion + control
+        # ══════════════════════════════════════════════════════════════════════
+        codes = decode(frame)
+        valid = False
+
+        if codes:
+            qr   = codes[0]
+            pts  = [(p.x, p.y) for p in qr.polygon]
+            cx   = float(np.mean([p[0] for p in pts]))
+            cy   = float(np.mean([p[1] for p in pts]))
+            diag = bbox_diagonal(pts)
+
+            size_ok = MIN_DIAG_PX <= diag <= MAX_DIAG_PX
+            jump_ok = (self._last_cx is None) or \
+                      (np.hypot(cx - self._last_cx, cy - self._last_cy) < MAX_JUMP_PX)
+
+            if size_ok and jump_ok:
+                self._last_cx     = cx
+                self._last_cy     = cy
+                self._last_pts    = pts
+                self._lost_frames = 0
+                valid             = True
+            else:
+                self._lost_frames += 1
+                reason = 'tamano' if not size_ok else 'salto'
+                cv2.putText(frame, f'DESCARTADO ({reason})  diag={diag:.0f}px',
+                            (10, 130), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (0, 80, 255), 1)
+        else:
+            self._lost_frames += 1
+
+        # ── Decidir posicion ──────────────────────────────────────────────────
+        using_last = False
+        if valid:
+            use_cx, use_cy, use_pts = self._last_cx, self._last_cy, self._last_pts
+        elif self._last_cx is not None and self._lost_frames < MAX_LOST:
+            use_cx, use_cy, use_pts = self._last_cx, self._last_cy, self._last_pts
+            using_last = True
+        else:
+            use_cx = use_cy = use_pts = None
+
+        # ── Control ───────────────────────────────────────────────────────────
+        if use_pts is not None:
+            diag_use = bbox_diagonal(use_pts)
+            err_x    = use_cx - frame_cx
+
+            # ¿Llegamos al stop? → inicia LOAD
+            if diag_use >= STOP_DIAG_PX:
+                self._cmd(0.0, 0.0)
+                self._state          = ST_LOAD
+                self._load_start     = self._now()
+                self._load_last_time = None
+                self._load_dist_done = 0.0
+                self.get_logger().info(f'Stop alcanzado (diag={diag_use:.1f}px) - iniciando CARGA')
+                self._publish_frame(frame)
                 return
 
-            # ── Detectar necesidad de maniobra de perspectiva ─────────────────
-            if cx_ok and dist_ok and not persp_ok:
-                self._persp_phase     = PERSP_REVERSE
-                self._persp_dist_done = 0.0
-                self._persp_last_time = None
-                self._persp_sign      = float(np.sign(err_persp))
-                self._reset_pid()
-                self._publish_cmd(0.0, 0.0)
-                self.get_logger().info(
-                    f'Maniobra recule — persp={err_persp:+.3f} sign={self._persp_sign:+.0f}'
-                )
-                cv2.imshow('QR Aligner', frame)
-                cv2.waitKey(1)
-                return
-
-            # ── Linear PD ─────────────────────────────────────────────────────
-            if abs(err_area) <= self._dz_lin:
-                linear = 0.0
+            # Si el QR esta de lado, avanza recto sin correccion angular
+            aspect = bbox_aspect(use_pts)
+            if aspect < MIN_ASPECT_FRONT:
+                # De lado — avanza recto, ignora err_x
+                self._cmd(PARALLEL_SPEED, 0.0)
+                cv2.putText(frame, f'DE LADO — avanzando recto (aspect={aspect:.2f})',
+                            (10, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (0, 165, 255), 1)
             else:
-                pd_lin = self._kp_lin * err_area + self._kd_lin * d_err_area
-                linear = float(np.clip(pd_lin, -self._max_lin, self._max_lin))
+                # De frente — control angular normal
+                angular = float(np.clip(-KP_ANG * err_x, -MAX_ANG, MAX_ANG)) \
+                          if abs(err_x) > DZ_ANG else 0.0
+                self._cmd(LINEAR_SPEED, angular)
 
-            # ── Angular PID (X) + perspectiva ────────────────────────────────
-            if cx_ok and persp_ok:
-                angular_target = 0.0
-            elif not cx_ok:
-                pid_x = (  self._kp_ang * err_x
-                         + self._ki_ang * self._i_err_x
-                         + self._kd_ang * d_err_x)
-                angular_target = float(np.clip(-pid_x, -self._max_ang, self._max_ang))
-            else:
-                raw  = self._kp_persp * err_persp
-                sign = float(np.sign(raw)) if raw != 0.0 else 0.0
-                if abs(raw) < self._persp_min:
-                    raw = sign * self._persp_min
-                angular_target = float(np.clip(raw, -self._max_ang, self._max_ang))
-
-            self._s_angular = self._alpha_ang * angular_target + (1 - self._alpha_ang) * self._s_angular
-            if cx_ok and persp_ok:
-                self._s_angular *= 0.7
-            angular = self._s_angular
-
-            # Estado display
-            if not dist_ok and (not cx_ok or not persp_ok):
-                estado, color = 'CENTRANDO + DIST', (0, 255, 255)
-            elif not cx_ok:
-                estado, color = 'CENTRANDO X (PID)', (0, 255, 255)
-            elif not persp_ok:
-                estado, color = 'CORRIGIENDO ANGULO', (0, 255, 255)
-            else:
-                estado, color = 'AJUSTANDO DIST', (255, 165, 0)
-
-            # Visualización
-            cv2.polylines(frame, [pts], True, (0, 255, 0), 2)
-            cv2.circle(frame, (int(qr_cx), int(qr_cy)), 6, (0, 0, 255), -1)
+            # Dibujo
+            color  = (0, 180, 255) if using_last else (0, 255, 0)
+            pts_np = np.array(use_pts, dtype=np.int32)
+            cv2.polylines(frame, [pts_np], True, color, 2)
+            cv2.circle(frame, (int(use_cx), int(use_cy)), 6, (0, 0, 255), -1)
             cv2.line(frame,
-                     (int(frame_cx), int(qr_cy)),
-                     (int(qr_cx),    int(qr_cy)),
+                     (int(frame_cx), int(use_cy)),
+                     (int(use_cx),   int(use_cy)),
                      (255, 0, 255), 2)
 
-            tl, tr, br, bl = pts[0], pts[1], pts[2], pts[3]
-            cv2.line(frame, tuple(tl), tuple(bl), (255, 100, 0), 3)
-            cv2.line(frame, tuple(tr), tuple(br), (0, 100, 255), 3)
+            pct = min(diag_use / STOP_DIAG_PX * 100.0, 100.0)
+            self._draw_progress(frame, pct, color, fh - 28,
+                                f'diag {diag_use:.0f}/{STOP_DIAG_PX}px ({pct:.0f}%)')
 
-            bar_y  = 15
-            bar_ex = int(np.clip(frame_cx - err_x * 2.0, 0, frame_w - 1))
-            cv2.line(frame, (int(frame_cx), bar_y), (bar_ex, bar_y), (255, 0, 255), 5)
-            cv2.circle(frame, (int(frame_cx), bar_y), 6, (255, 255, 255), -1)
-
-            if data:
-                cv2.putText(frame, data, (pts[0][0], pts[0][1] - 10),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-
+            estado = f'LAST KNOWN ({self._lost_frames}/{MAX_LOST})' if using_last else 'DETECTADO'
             cv2.putText(frame, estado,
-                        (10, 45), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
-            cv2.putText(frame, f'err_x={err_x:+.1f}px  dz={self._dz_ang:.0f}px',
-                        (10, 68), cv2.FONT_HERSHEY_SIMPLEX, 0.50, (200, 200, 200), 1)
-            cv2.putText(frame, f'area={area_ratio:.3f}  obj={self._target_ratio:.2f}  err={err_area:+.3f}',
-                        (10, 86), cv2.FONT_HERSHEY_SIMPLEX, 0.50, (200, 200, 200), 1)
-            cv2.putText(frame, f'lin={linear:+.4f}  ang={angular:+.4f}',
-                        (10, 104), cv2.FONT_HERSHEY_SIMPLEX, 0.50, color, 1)
-            cv2.putText(frame, f'i_x={self._i_err_x:+.1f}  d_x={d_err_x:+.2f}',
-                        (10, 122), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (160, 160, 160), 1)
-            cv2.putText(frame, f'persp={err_persp:+.3f}  dz={self._dz_persp:.2f}  ok={persp_ok}',
-                        (10, 140), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (160, 160, 160), 1)
+                        (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.75, color, 2)
+            cv2.putText(frame, f'err_x={err_x:+.1f}px   dz={DZ_ANG:.0f}px',
+                        (10, 56), cv2.FONT_HERSHEY_SIMPLEX, 0.50, (200, 200, 200), 1)
+            cv2.putText(frame, f'diag={diag_use:.1f}px',
+                        (10, 78), cv2.FONT_HERSHEY_SIMPLEX, 0.50, (200, 200, 200), 1)
 
-            self._publish_cmd(linear, angular)
+            if valid and codes:
+                data = codes[0].data.decode('utf-8', errors='ignore')
+                if data:
+                    cv2.putText(frame, data,
+                                (pts_np[0][0], pts_np[0][1] - 10),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.48, color, 1)
 
         else:
-            self._initialized   = False
-            self._s_angular     = 0.0
-            self._s_persp       = 0.0
-            self._prev_err_area = 0.0
-            self._prev_err_x    = 0.0
-            self._reset_pid()
-            self._publish_cmd(0.0, 0.0)
-            cv2.putText(frame, 'QR no detectado',
-                        (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+            # Lost frames agotados → BLIND
+            self._cmd(0.0, 0.0)
+            cv2.putText(frame, 'QR PERDIDO - iniciando BLIND',
+                        (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.70, (0, 0, 255), 2)
+            self._state       = ST_BLIND
+            self._blind_start = self._now()
+            self.get_logger().warn('QR perdido - entrando a BLIND ADVANCE')
 
-        cv2.imshow('QR Aligner', frame)
+        self._publish_frame(frame)
+
+    def _publish_frame(self, frame):
+        cv2.imshow('QR Approach', frame)
         cv2.waitKey(1)
-
-    # ── Publish ───────────────────────────────────────────────────────────────
-
-    def _publish_cmd(self, linear: float, angular: float):
-        twist = Twist()
-        twist.linear.x  = linear
-        twist.angular.z = angular
-        self._pub.publish(twist)
+        ok, buf = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+        if not ok:
+            return
+        msg = CompressedImage()
+        msg.header.stamp  = self.get_clock().now().to_msg()
+        msg.format        = 'jpeg'
+        msg.data          = buf.tobytes()
+        self._pub_img.publish(msg)
 
     def destroy_node(self):
         self._pipeline.set_state(Gst.State.NULL)
@@ -514,13 +412,13 @@ class QRAligner(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    node = QRAligner()
+    node = QRApproach()
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
         pass
     finally:
-        node._publish_cmd(0.0, 0.0)
+        node._cmd(0.0, 0.0)
         node.destroy_node()
         rclpy.shutdown()
 

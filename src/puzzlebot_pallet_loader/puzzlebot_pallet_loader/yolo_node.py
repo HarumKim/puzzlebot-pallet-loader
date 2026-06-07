@@ -12,7 +12,7 @@ import os
 
 class DetectorNode(Node):
     def __init__(self):
-        super().__init__('detector_node')
+        super().__init__('yolo_node')
 
         model_path = os.path.join(
             get_package_share_directory('puzzlebot_pallet_loader'), 'best.pt'
