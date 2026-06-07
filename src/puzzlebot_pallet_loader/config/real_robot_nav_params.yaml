@@ -21,16 +21,16 @@ hybrid_a_star_bug0_node:
     #  -90  = mirando hacia -Y
 
     waypoints:
-    - -1.78   # WP0 x
-    - -1.40   # WP0 y
+    - -1.5   # WP0 x
+    - 1.0   # WP0 y
     - 180.0   # WP0 yaw deseado en grados
 
     # Orientación final deseada en waypoint
-    waypoint_yaw_tolerance_deg: 8.0
+    waypoint_yaw_tolerance_deg: 3.0
 
     # Control de giro final
-    final_yaw_kp: 1.5
-    final_yaw_max_ang: 0.08
+    final_yaw_kp: 1.4
+    final_yaw_max_ang: 0.05
 
     # Distancia en metros a la que se considera que se llegó a un waypoint.
     # Más grande = el robot para antes de llegar exactamente.
@@ -56,7 +56,7 @@ hybrid_a_star_bug0_node:
 
     # Cuántos puntos saltar al seguir la ruta A*.
     # 1 = seguir cada punto, 2 = saltar de a 2 (más suave en curvas).
-    path_stride: 2
+    path_stride: 3
 
     # Tolerancia para reconocer si un obstáculo del LiDAR coincide con uno
     # conocido del mapa (para no frenar por obstáculos que ya están en el plan).

@@ -72,6 +72,8 @@ def generate_launch_description():
                 'cmd_vel_topic': '/cmd_vel',
                 'odom_topic': '/ekf_odom',  
                 'scan_topic': '/scan',
+                'enable_keyboard': False,
+                'wait_for_localization_convergence': False,
             },
         ],
     )

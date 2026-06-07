@@ -12,10 +12,12 @@ Publishes:
 """
 
 import math
+import os
 
 import cv2
 import numpy as np
 import rclpy
+from ament_index_python.packages import get_package_share_directory
 from cv_bridge import CvBridge
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy
@@ -29,10 +31,6 @@ class ArucoDetectorNode(Node):
         super().__init__('aruco_detector_node')
 
         self.declare_parameter('camera_topic', '/camera/image_raw/compressed')
-        self.declare_parameter(
-            'calib_file',
-            '/home/valeria/puzzlebot-pallet-loader/src/camera_dataset/camera_calibration.npz',
-        )
         self.declare_parameter('marker_size', 0.08)
         self.declare_parameter('aruco_dictionary', 'DICT_4X4_50')
         self.declare_parameter('camera_x_offset', 0.08)
@@ -44,7 +42,7 @@ class ArucoDetectorNode(Node):
         self.declare_parameter('allowed_marker_ids', list(range(11)))
 
         camera_topic = self.get_parameter('camera_topic').value
-        calib_file = self.get_parameter('calib_file').value
+        calibration_path = self._default_calibration_file()
         self._marker_size = float(self.get_parameter('marker_size').value)
         dict_param = self.get_parameter('aruco_dictionary').value
         self.cam_x_offset = float(self.get_parameter('camera_x_offset').value)
@@ -58,7 +56,9 @@ class ArucoDetectorNode(Node):
         allowed_marker_ids = self.get_parameter('allowed_marker_ids').value
         self._allowed_marker_ids = {int(marker_id) for marker_id in allowed_marker_ids}
 
-        self._camera_matrix, self._dist_coeffs = self._load_calibration(calib_file)
+        self._camera_matrix, self._dist_coeffs = self._load_calibration(
+            calibration_path
+        )
         self._aruco_dict = cv2.aruco.getPredefinedDictionary(
             self._resolve_dictionary(dict_param)
         )
@@ -91,18 +91,18 @@ class ArucoDetectorNode(Node):
         self.get_logger().info(
             'ArUco detector ready: '
             f'topic={camera_topic} ({input_type}), dict={dict_param}, '
-            f'marker_size={self._marker_size:.3f}m, calib={calib_file}, '
+            f'marker_size={self._marker_size:.3f}m, calib={calibration_path}, '
             f'allowed_ids={sorted(self._allowed_marker_ids)}'
         )
 
-    def _load_calibration(self, calib_file):
+    def _load_calibration(self, calibration_path):
         try:
-            calib = np.load(calib_file)
+            calib = np.load(calibration_path)
             camera_matrix = np.asarray(calib['camera_matrix'], dtype=np.float64)
             dist_coeffs = np.asarray(calib['dist_coeffs'], dtype=np.float64)
         except Exception as exc:
             raise RuntimeError(
-                f'Could not load camera calibration from {calib_file}: {exc}'
+                f'Could not load camera calibration from {calibration_path}: {exc}'
             ) from exc
 
         if camera_matrix.shape != (3, 3):
@@ -118,6 +118,13 @@ class ArucoDetectorNode(Node):
             f'D={dist_coeffs.tolist()}'
         )
         return camera_matrix, dist_coeffs
+
+    def _default_calibration_file(self):
+        return os.path.join(
+            get_package_share_directory('puzzlebot_pallet_loader'),
+            'config',
+            'camera_calibration.npz',
+        )
 
     def _resolve_dictionary(self, dict_param):
         if isinstance(dict_param, str):
@@ -148,6 +155,84 @@ class ArucoDetectorNode(Node):
             frame, self._aruco_dict, parameters=self._aruco_params
         )
 
+    # def _image_cb(self, msg):
+    #     try:
+    #         frame = self._bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+    #     except Exception as exc:
+    #         self.get_logger().warn(f'cv_bridge error: {exc}')
+    #         return
+
+    #     self._process_frame(frame, msg.header)
+
+    # def _compressed_image_cb(self, msg):
+    #     buffer = np.frombuffer(msg.data, dtype=np.uint8)
+    #     frame = cv2.imdecode(buffer, cv2.IMREAD_COLOR)
+    #     if frame is None:
+    #         self.get_logger().warn('Could not decode compressed camera image')
+    #         return
+
+    #     self._process_frame(frame, msg.header)
+    # def _process_frame(self, frame, header):
+    #     corners, ids, _ = self._detect_markers(frame)
+    #     annotated = frame.copy() if self._publish_annotated else None
+
+    #     if ids is None or len(ids) == 0:
+    #         self._publish_annotated_image(annotated, header)
+    #         return
+
+    #     _, tvecs, _ = cv2.aruco.estimatePoseSingleMarkers(
+    #         corners,
+    #         self._marker_size,
+    #         self._camera_matrix,
+    #         self._dist_coeffs,
+    #     )
+
+    #     viz_markers = MarkerArray()
+    #     now = self.get_clock().now().to_msg()
+
+    #     for index, marker_id in enumerate(ids.flatten()):
+    #         marker_id = int(marker_id)
+    #         if marker_id not in self._allowed_marker_ids:
+    #             self.get_logger().debug(
+    #                 f'ArUco #{marker_id} ignored: not in allowed_marker_ids'
+    #             )
+    #             continue
+
+    #         if annotated is not None:
+    #             cv2.aruco.drawDetectedMarkers(
+    #                 annotated, [corners[index]], np.array([[marker_id]])
+    #             )
+
+    #         tvec = tvecs[index][0]
+    #         x_cam = float(tvec[0])
+    #         z_cam = float(tvec[2])
+
+    #         x_base = self.cam_x_offset + z_cam
+    #         y_base = self.cam_y_offset - x_cam
+    #         range_m = math.hypot(x_base, y_base)
+    #         bearing_rad = math.atan2(y_base, x_base) + self.cam_yaw_offset
+
+    #         measurement = Float32MultiArray()
+    #         measurement.data = [float(marker_id), range_m, bearing_rad]
+    #         self._meas_pub.publish(measurement)
+
+    #         viz_markers.markers.append(
+    #             self._make_viz_marker(
+    #                 marker_id=marker_id,
+    #                 stamp=now,
+    #                 x_base=x_base,
+    #                 y_base=y_base,
+    #             )
+    #         )
+
+    #         self._draw_axis(annotated, corners[index], tvec)
+    #         self.get_logger().info(
+    #             f'ArUco #{marker_id} range={range_m:.2f}m '
+    #             f'bearing={bearing_rad:.2f}rad'
+    #         )
+
+    #     self._viz_pub.publish(viz_markers)
+    #     self._publish_annotated_image(annotated, header)
     def _image_cb(self, msg):
         try:
             frame = self._bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
@@ -155,37 +240,98 @@ class ArucoDetectorNode(Node):
             self.get_logger().warn(f'cv_bridge error: {exc}')
             return
 
-        self._process_frame(frame, msg.header)
+        frame = np.ascontiguousarray(frame, dtype=np.uint8)
 
+        try:
+            self._process_frame(frame, msg.header)
+        except Exception as exc:
+            self.get_logger().error(f'ArUco processing error: {exc}')
     def _compressed_image_cb(self, msg):
         buffer = np.frombuffer(msg.data, dtype=np.uint8)
         frame = cv2.imdecode(buffer, cv2.IMREAD_COLOR)
+
         if frame is None:
             self.get_logger().warn('Could not decode compressed camera image')
             return
 
-        self._process_frame(frame, msg.header)
+        frame = np.ascontiguousarray(frame, dtype=np.uint8)
 
+        try:
+            self._process_frame(frame, msg.header)
+        except Exception as exc:
+            self.get_logger().error(f'ArUco processing error: {exc}')
+    def _estimate_marker_poses(self, corners):
+        marker_size = float(self._marker_size)
+        half = marker_size / 2.0
+
+        object_points = np.array(
+            [
+                [-half,  half, 0.0],
+                [ half,  half, 0.0],
+                [ half, -half, 0.0],
+                [-half, -half, 0.0],
+            ],
+            dtype=np.float32,
+        )
+
+        camera_matrix = np.asarray(self._camera_matrix, dtype=np.float64)
+        dist_coeffs = np.asarray(self._dist_coeffs, dtype=np.float64)
+
+        if dist_coeffs.size == 0:
+            dist_coeffs = np.zeros((5, 1), dtype=np.float64)
+        else:
+            dist_coeffs = dist_coeffs.reshape(-1, 1).astype(np.float64)
+
+        rvecs = []
+        tvecs = []
+        valid_indices = []
+
+        for index, c in enumerate(corners):
+            image_points = np.asarray(c, dtype=np.float32).reshape(4, 2)
+            image_points = np.ascontiguousarray(image_points, dtype=np.float32)
+
+            ok, rvec, tvec = cv2.solvePnP(
+                object_points,
+                image_points,
+                camera_matrix,
+                dist_coeffs,
+                flags=cv2.SOLVEPNP_IPPE_SQUARE,
+            )
+
+            if not ok:
+                continue
+
+            rvecs.append(rvec.reshape(3, 1))
+            tvecs.append(tvec.reshape(3, 1))
+            valid_indices.append(index)
+
+        return rvecs, tvecs, valid_indices
     def _process_frame(self, frame, header):
-        corners, ids, _ = self._detect_markers(frame)
+        frame = np.ascontiguousarray(frame, dtype=np.uint8)
+
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        gray = np.ascontiguousarray(gray, dtype=np.uint8)
+
+        corners, ids, _ = self._detect_markers(gray)
         annotated = frame.copy() if self._publish_annotated else None
 
         if ids is None or len(ids) == 0:
             self._publish_annotated_image(annotated, header)
             return
 
-        _, tvecs, _ = cv2.aruco.estimatePoseSingleMarkers(
-            corners,
-            self._marker_size,
-            self._camera_matrix,
-            self._dist_coeffs,
-        )
+        rvecs, tvecs, valid_indices = self._estimate_marker_poses(corners)
+
+        if not valid_indices:
+            self.get_logger().warn('ArUco detected, but pose estimation failed.')
+            self._publish_annotated_image(annotated, header)
+            return
 
         viz_markers = MarkerArray()
         now = self.get_clock().now().to_msg()
 
-        for index, marker_id in enumerate(ids.flatten()):
-            marker_id = int(marker_id)
+        for out_index, corner_index in enumerate(valid_indices):
+            marker_id = int(ids.flatten()[corner_index])
+
             if marker_id not in self._allowed_marker_ids:
                 self.get_logger().debug(
                     f'ArUco #{marker_id} ignored: not in allowed_marker_ids'
@@ -194,10 +340,14 @@ class ArucoDetectorNode(Node):
 
             if annotated is not None:
                 cv2.aruco.drawDetectedMarkers(
-                    annotated, [corners[index]], np.array([[marker_id]])
+                    annotated,
+                    [corners[corner_index]],
+                    np.array([[marker_id]], dtype=np.int32)
                 )
 
-            tvec = tvecs[index][0]
+            tvec = tvecs[out_index].reshape(3)
+            rvec = rvecs[out_index].reshape(3, 1)
+
             x_cam = float(tvec[0])
             z_cam = float(tvec[2])
 
@@ -219,7 +369,9 @@ class ArucoDetectorNode(Node):
                 )
             )
 
-            self._draw_axis(annotated, corners[index], tvec)
+            if annotated is not None:
+                self._draw_axis(annotated, corners[corner_index], rvec, tvecs[out_index])
+
             self.get_logger().info(
                 f'ArUco #{marker_id} range={range_m:.2f}m '
                 f'bearing={bearing_rad:.2f}rad'
@@ -227,6 +379,7 @@ class ArucoDetectorNode(Node):
 
         self._viz_pub.publish(viz_markers)
         self._publish_annotated_image(annotated, header)
+
 
     def _make_viz_marker(self, marker_id, stamp, x_base, y_base):
         marker = Marker()
@@ -250,35 +403,58 @@ class ArucoDetectorNode(Node):
         marker.lifetime.sec = 1
         return marker
 
-    def _draw_axis(self, image, corners, tvec):
+    # def _draw_axis(self, image, corners, tvec):
+    #     if image is None or not hasattr(cv2, 'drawFrameAxes'):
+    #         return
+
+    #     object_points = np.array(
+    #         [
+    #             [-self._marker_size / 2.0, self._marker_size / 2.0, 0.0],
+    #             [self._marker_size / 2.0, self._marker_size / 2.0, 0.0],
+    #             [self._marker_size / 2.0, -self._marker_size / 2.0, 0.0],
+    #             [-self._marker_size / 2.0, -self._marker_size / 2.0, 0.0],
+    #         ],
+    #         dtype=np.float32,
+    #     )
+    #     ok, rvec, _ = cv2.solvePnP(
+    #         object_points,
+    #         corners.reshape(4, 2).astype(np.float32),
+    #         self._camera_matrix,
+    #         self._dist_coeffs,
+    #         flags=cv2.SOLVEPNP_IPPE_SQUARE,
+    #     )
+    #     if ok:
+    #         cv2.drawFrameAxes(
+    #             image,
+    #             self._camera_matrix,
+    #             self._dist_coeffs,
+    #             rvec,
+    #             tvec.reshape(3, 1),
+    #             self._marker_size * 0.5,
+    #         )
+    def _draw_axis(self, image, corners, rvec, tvec):
         if image is None or not hasattr(cv2, 'drawFrameAxes'):
             return
 
-        object_points = np.array(
-            [
-                [-self._marker_size / 2.0, self._marker_size / 2.0, 0.0],
-                [self._marker_size / 2.0, self._marker_size / 2.0, 0.0],
-                [self._marker_size / 2.0, -self._marker_size / 2.0, 0.0],
-                [-self._marker_size / 2.0, -self._marker_size / 2.0, 0.0],
-            ],
-            dtype=np.float32,
-        )
-        ok, rvec, _ = cv2.solvePnP(
-            object_points,
-            corners.reshape(4, 2).astype(np.float32),
-            self._camera_matrix,
-            self._dist_coeffs,
-            flags=cv2.SOLVEPNP_IPPE_SQUARE,
-        )
-        if ok:
+        camera_matrix = np.asarray(self._camera_matrix, dtype=np.float64)
+        dist_coeffs = np.asarray(self._dist_coeffs, dtype=np.float64)
+
+        if dist_coeffs.size == 0:
+            dist_coeffs = np.zeros((5, 1), dtype=np.float64)
+        else:
+            dist_coeffs = dist_coeffs.reshape(-1, 1).astype(np.float64)
+
+        try:
             cv2.drawFrameAxes(
                 image,
-                self._camera_matrix,
-                self._dist_coeffs,
-                rvec,
-                tvec.reshape(3, 1),
-                self._marker_size * 0.5,
+                camera_matrix,
+                dist_coeffs,
+                np.asarray(rvec, dtype=np.float64).reshape(3, 1),
+                np.asarray(tvec, dtype=np.float64).reshape(3, 1),
+                float(self._marker_size) * 0.5,
             )
+        except Exception as exc:
+            self.get_logger().warn(f'drawFrameAxes failed: {exc}')
 
     def _publish_annotated_image(self, image, header):
         if self._annotated_pub is None or image is None:

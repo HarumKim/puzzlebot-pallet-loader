@@ -24,7 +24,7 @@ setup(
     maintainer_email='tu_correo@todo.com',
     description='Nodo de reconocimiento de voz HMM para el Puzzlebot',
     license='Apache-2.0',
-    tests_require=['pytest'],
+    #tests_require=['pytest'],
     entry_points={
         'console_scripts': [
             # Registramos tu archivo comando_node.py con el comando ejecutable comando_node

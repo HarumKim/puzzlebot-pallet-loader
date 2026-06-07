@@ -139,9 +139,18 @@ class HybridAStarBug0Node(Node):
         self._dynamic_obstacles = []  # (x, y) world coords of unknown obstacles found by Bug0
         self._unknown_obs_frames = 0  # consecutive frames with unknown obstacle in front
 
+        self.declare_parameter('enable_keyboard', False)
+        self._enable_keyboard = bool(self.get_parameter('enable_keyboard').value)
+
         self._paused = False
-        self._kb_thread = threading.Thread(target=self._keyboard_listener, daemon=True)
-        self._kb_thread.start()
+
+        if self._enable_keyboard and sys.stdin.isatty():
+            self._kb_thread = threading.Thread(target=self._keyboard_listener, daemon=True)
+            self._kb_thread.start()
+            self.get_logger().info('Teclado: ESPACIO = pausar/reanudar | q = salir')
+        else:
+            self._kb_thread = None
+            self.get_logger().info('Keyboard listener disabled for launch mode.')
 
         self.create_timer(0.05, self._loop)
 
@@ -149,7 +158,7 @@ class HybridAStarBug0Node(Node):
             f'Hybrid A* + Bug0 started. Waypoints={self.waypoints}, '
             f'obstacles={len(self._obstacles) // 4}'
         )
-        self.get_logger().info('Teclado: ESPACIO = pausar/reanudar | q = salir')
+        #self.get_logger().info('Teclado: ESPACIO = pausar/reanudar | q = salir')
 
     def _odom_cb(self, msg: Odometry):
         p = msg.pose.pose.position
@@ -167,8 +176,17 @@ class HybridAStarBug0Node(Node):
         self._scan = msg
 
     def _keyboard_listener(self):
+        if not sys.stdin.isatty():
+            self.get_logger().warn('No interactive stdin available. Keyboard listener disabled.')
+            return
+
         fd = sys.stdin.fileno()
-        old = termios.tcgetattr(fd)
+
+        try:
+            old = termios.tcgetattr(fd)
+        except termios.error as exc:
+            self.get_logger().warn(f'Could not initialize keyboard listener: {exc}')
+            return
         try:
             tty.setraw(fd)
             while rclpy.ok():

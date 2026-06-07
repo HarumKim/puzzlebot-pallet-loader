@@ -15,6 +15,7 @@ setup(
         ('share/' + package_name, ['best.pt']),
         (os.path.join('share', package_name, 'launch'), glob('launch/*.py')),
         (os.path.join('share', package_name, 'config'), glob('config/*.yaml')),
+        (os.path.join('share', package_name, 'config'), glob('config/*.npz')),
         # Modelos HMM de reconocimiento de voz
         (os.path.join('lib', 'python3.10', 'site-packages', package_name, 'models'),
             glob(package_name + '/models/*.pkl')),
@@ -41,6 +42,7 @@ setup(
             'aruco_detector_node = puzzlebot_pallet_loader.aruco_detector_node:main',
             'fsm_control_node = puzzlebot_pallet_loader.fsm_control_node:main',
             'qr_align = puzzlebot_pallet_loader.qr_align:main',
+            'mcl_localization_node = puzzlebot_pallet_loader.mcl_localization_node:main',
         ],
     },
 )
