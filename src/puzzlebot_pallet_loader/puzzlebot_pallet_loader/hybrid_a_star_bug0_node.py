@@ -11,7 +11,7 @@ from rclpy.parameter import Parameter
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import LaserScan
-from std_msgs.msg import String
+from std_msgs.msg import String, Float32MultiArray
 
 
 DEFAULT_WAYPOINTS = [3.5, 2.7]
@@ -60,6 +60,7 @@ class HybridAStarBug0Node(Node):
         self._nav_status_pub = self.create_publisher(String, navigation_status_topic, 10)
         self.create_subscription(Odometry, odom_topic, self._odom_cb, 10)
         self.create_subscription(LaserScan, scan_topic, self._scan_cb, 10)
+        self.create_subscription(Float32MultiArray, '/navigation/set_goal', self._set_goal_cb, 10)
 
         self.get_logger().info(
             f'Using topics: cmd_vel={cmd_vel_topic}, odom={odom_topic}, scan={scan_topic}'
@@ -189,6 +190,23 @@ class HybridAStarBug0Node(Node):
 
     def _scan_cb(self, msg: LaserScan):
         self._scan = msg
+
+    def _set_goal_cb(self, msg: Float32MultiArray):
+        """Recibe [x, y, yaw_deg] y lo pone como unico waypoint."""
+        if len(msg.data) < 3:
+            self.get_logger().warn('set_goal: necesita [x, y, yaw_deg]')
+            return
+        x, y, yaw_deg = msg.data[0], msg.data[1], msg.data[2]
+        self.waypoints = [(x, y, math.radians(yaw_deg))]
+        self.wp_idx = 0
+        self.path = []
+        self.path_idx = 0
+        self._state = 'FOLLOW_PATH'
+        self._aligning_final_yaw = False
+        self._bug0_side = None
+        self._dynamic_obstacles = []
+        self._localization_converged = True
+        self.get_logger().info(f'Goal dinamico recibido: ({x:.2f}, {y:.2f}, {yaw_deg:.0f}deg)')
 
     def _publish_navigation_status(self, status: str):
         msg = String()

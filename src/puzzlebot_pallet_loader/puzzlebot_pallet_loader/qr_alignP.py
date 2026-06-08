@@ -85,7 +85,7 @@ class QRApproach(Node):
 
         self._load_enabled = False
         self._ready_to_load_sent = False
-                
+
         self._pub = self.create_publisher(Twist, cmd_vel_topic, 10)
         self._status_pub = self.create_publisher(String, status_topic, 10)
         self.create_subscription(Bool, enable_topic, self._enable_cb, 10)
@@ -94,9 +94,17 @@ class QRApproach(Node):
         self._pub_img = self.create_publisher(
             CompressedImage, '/detection/annotated/compressed', 10)
         self._pub_done = self.create_publisher(Bool, '/qr_align/done', 10)
+        # ── CAMBIO 1: publisher /qr_data ──────────────────────────────────────
+        self._pub_qr   = self.create_publisher(String, '/qr_data', 10)
+        self._qr_value = None
+        # ─────────────────────────────────────────────────────────────────────
 
-        pipeline_str, decoder_name = self._build_pipeline(udp_port)
-        self.get_logger().info(f'Usando decoder H264 de GStreamer: {decoder_name}')
+        pipeline_str = (
+            f'udpsrc port={udp_port} caps="video/mpegts, systemstream=true" ! '
+            'tsdemux latency=0 ! h264parse ! avdec_h264 ! '
+            'videoconvert ! video/x-raw,format=BGR ! '
+            'appsink name=sink emit-signals=true sync=false max-buffers=1 drop=true'
+        )
         self._pipeline = Gst.parse_launch(pipeline_str)
         appsink        = self._pipeline.get_by_name('sink')
         appsink.connect('new-sample', self._on_new_sample)
@@ -117,8 +125,8 @@ class QRApproach(Node):
         self._state = ST_APPROACH
 
         # Timers de fase
-        self._blind_start     = None   # timestamp inicio BLIND
-        self._load_start      = None   # timestamp inicio LOAD
+        self._blind_start     = None
+        self._load_start      = None
         self._load_dist_done  = 0.0
         self._load_last_time  = None
 
@@ -126,6 +134,20 @@ class QRApproach(Node):
         self.get_logger().info(f'QR Approach listo - STOP_DIAG={STOP_DIAG_PX}px')
 
     # ── GStreamer ─────────────────────────────────────────────────────────────
+
+    def _load_enable_cb(self, msg: Bool):
+        self._load_enabled = bool(msg.data)
+
+        if self._load_enabled:
+            self.get_logger().info('LOAD enabled by FSM.')
+            if self._state == ST_APPROACH and self._ready_to_load_sent:
+                self._cmd(0.0, 0.0)
+                self._state = ST_LOAD
+                self._load_start = self._now()
+                self._load_last_time = None
+                self._load_dist_done = 0.0
+                self.get_logger().info('FSM autorizo LOAD - iniciando avance hardcodeado.')
+
     def _enable_cb(self, msg: Bool):
         self._enabled = bool(msg.data)
 
@@ -141,7 +163,6 @@ class QRApproach(Node):
         msg = String()
         msg.data = status
         self._status_pub.publish(msg)
-
 
     def _on_new_sample(self, sink):
         sample = sink.emit('pull-sample')
@@ -211,7 +232,7 @@ class QRApproach(Node):
             return
 
         # ══════════════════════════════════════════════════════════════════════
-        # LOAD - avanza 10cm fijos sin vision
+        # LOAD
         # ══════════════════════════════════════════════════════════════════════
         if self._state == ST_LOAD:
             now = self._now()
@@ -233,16 +254,11 @@ class QRApproach(Node):
                 self._cmd(0.0, 0.0)
                 self._state = ST_DONE
                 self._load_enabled = False
-
-                self.get_logger().info('LOAD terminado — enviando LOAD_DONE a FSM.')
-
+                self.get_logger().info('LOAD terminado - enviando LOAD_DONE a FSM.')
                 done_msg = Bool()
                 done_msg.data = True
                 self._pub_done.publish(done_msg)
-
-                # La FSM usará esto para mandar lift y sacar el pallet.
                 self._publish_status('LOAD_DONE')
-
             else:
                 self._cmd(LOAD_SPEED, 0.0)
 
@@ -250,14 +266,13 @@ class QRApproach(Node):
             return
 
         # ══════════════════════════════════════════════════════════════════════
-        # BLIND - avanza a ciegas buscando el QR
+        # BLIND
         # ══════════════════════════════════════════════════════════════════════
         if self._state == ST_BLIND:
             now     = self._now()
             elapsed = now - self._blind_start
             pct     = min(elapsed / BLIND_SECS * 100.0, 100.0)
 
-            # Intenta detectar mientras avanza
             codes = decode(frame)
             if codes:
                 qr   = codes[0]
@@ -267,7 +282,6 @@ class QRApproach(Node):
                 diag = bbox_diagonal(pts)
 
                 if MIN_DIAG_PX <= diag <= MAX_DIAG_PX:
-                    # Recupero el QR - vuelve a APPROACH
                     self._last_cx     = cx
                     self._last_cy     = cy
                     self._last_pts    = pts
@@ -277,13 +291,11 @@ class QRApproach(Node):
                     self._publish_frame(frame)
                     return
 
-            # Tiempo agotado sin recuperar QR - para definitivamente
             if elapsed >= BLIND_SECS:
                 self._cmd(0.0, 0.0)
                 self.get_logger().warn('BLIND agotado - QR no recuperado, PARADO')
                 cv2.putText(frame, 'BLIND AGOTADO - PARADO',
                             (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
-                # Resetea para que el operador pueda reintentar
                 self._blind_start = None
                 self._state       = ST_APPROACH
                 self._last_cx = self._last_cy = self._last_pts = None
@@ -299,7 +311,7 @@ class QRApproach(Node):
             return
 
         # ══════════════════════════════════════════════════════════════════════
-        # APPROACH - deteccion + control
+        # APPROACH
         # ══════════════════════════════════════════════════════════════════════
         codes = decode(frame)
         valid = False
@@ -330,7 +342,6 @@ class QRApproach(Node):
         else:
             self._lost_frames += 1
 
-        # ── Decidir posicion ──────────────────────────────────────────────────
         using_last = False
         if valid:
             use_cx, use_cy, use_pts = self._last_cx, self._last_cy, self._last_pts
@@ -340,49 +351,37 @@ class QRApproach(Node):
         else:
             use_cx = use_cy = use_pts = None
 
-        # ── Control ───────────────────────────────────────────────────────────
         if use_pts is not None:
             diag_use = bbox_diagonal(use_pts)
             err_x    = use_cx - frame_cx
 
-            # ¿Llegamos al stop? → pedir preparación de lifter antes de LOAD
             if diag_use >= STOP_DIAG_PX:
                 self._cmd(0.0, 0.0)
-
-                # Primera vez que llegamos al punto de carga:
-                # avisamos a la FSM para reset_encoder + conveyor.
                 if not self._ready_to_load_sent:
                     self._ready_to_load_sent = True
                     self._load_enabled = False
                     self._publish_status('READY_TO_LOAD')
                     self.get_logger().info(
-                        f'Stop alcanzado (diag={diag_use:.1f}px) — READY_TO_LOAD enviado. '
+                        f'Stop alcanzado (diag={diag_use:.1f}px) - READY_TO_LOAD enviado. '
                         'Esperando reset_encoder + conveyor desde FSM.'
                     )
-
-                # Mientras la FSM no autorice LOAD, nos quedamos quietos.
                 if not self._load_enabled:
                     cv2.putText(frame, 'READY_TO_LOAD - esperando FSM/conveyor',
                                 (10, 105), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 220, 255), 2)
                     self._publish_frame(frame)
                     return
-
-                # Cuando FSM autoriza, ahora sí inicia LOAD.
-                self._state = ST_LOAD
-                self._load_start = self._now()
+                self._state          = ST_LOAD
+                self._load_start     = self._now()
                 self._load_last_time = None
                 self._load_dist_done = 0.0
-                self.get_logger().info('LOAD autorizado — iniciando avance hardcodeado.')
+                self.get_logger().info('LOAD autorizado - iniciando avance hardcodeado.')
                 self._publish_frame(frame)
                 return
 
-            # Angular
             angular = float(np.clip(-KP_ANG * err_x, -MAX_ANG, MAX_ANG)) \
                       if abs(err_x) > DZ_ANG else 0.0
-
             self._cmd(LINEAR_SPEED, angular)
 
-            # Dibujo
             color  = (0, 180, 255) if using_last else (0, 255, 0)
             pts_np = np.array(use_pts, dtype=np.int32)
             cv2.polylines(frame, [pts_np], True, color, 2)
@@ -410,15 +409,27 @@ class QRApproach(Node):
                     cv2.putText(frame, data,
                                 (pts_np[0][0], pts_np[0][1] - 10),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.48, color, 1)
+                    # ── CAMBIO 2: publica /qr_data solo cuando cambia ─────────
+                    if data != self._qr_value:
+                        self._qr_value = data
+                        qr_msg = String()
+                        qr_msg.data = data
+                        self._pub_qr.publish(qr_msg)
+                        self.get_logger().info(f'QR publicado: {data}')
+                    # ─────────────────────────────────────────────────────────
 
         else:
-            # Lost frames agotados → BLIND
-            self._cmd(0.0, 0.0)
-            cv2.putText(frame, 'QR PERDIDO - iniciando BLIND',
-                        (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.70, (0, 0, 255), 2)
-            self._state       = ST_BLIND
-            self._blind_start = self._now()
-            self.get_logger().warn('QR perdido - entrando a BLIND ADVANCE')
+            if self._lost_frames >= MAX_LOST:
+                self._cmd(0.0, 0.0)
+                cv2.putText(frame, 'QR PERDIDO - iniciando BLIND',
+                            (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.70, (0, 0, 255), 2)
+                self._state       = ST_BLIND
+                self._blind_start = self._now()
+                self.get_logger().warn('QR perdido - entrando a BLIND ADVANCE')
+            else:
+                self._cmd(0.0, 0.0)
+                cv2.putText(frame, f'Buscando QR... ({self._lost_frames}/{MAX_LOST})',
+                            (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.70, (0, 180, 255), 2)
 
         self._publish_frame(frame)
 
@@ -456,12 +467,10 @@ def main(args=None):
                 node._cmd(0.0, 0.0)
         except Exception:
             pass
-
         try:
             node.destroy_node()
         except Exception:
             pass
-
         try:
             if rclpy.ok():
                 rclpy.shutdown()

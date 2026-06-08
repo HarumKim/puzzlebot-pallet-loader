@@ -24,7 +24,7 @@ hybrid_a_star_bug0_node:
     - -1.5   # WP0 x
     - 1.0   # WP0 y
     - 180.0   # WP0 yaw deseado en grados
-    - 0.78
+    - 0.73
     - 1.04
     - 0.0
 
@@ -46,7 +46,7 @@ hybrid_a_star_bug0_node:
     bounds:
     - -2.65  # x mínimo (dentro de pared izquierda x≈-2.81)
     - -1.65  # y mínimo (dentro de pared sur y≈-1.84)
-    - 1.90   # x máximo (dentro de pared derecha x≈2.06)
+    - 2.50   # x máximo (dentro de pared derecha x≈2.06)
     - 1.65   # y máximo (dentro de pared norte y≈1.84)
 
     # Tamaño de cada celda del grid A* en metros.
@@ -63,7 +63,7 @@ hybrid_a_star_bug0_node:
 
     # Tolerancia para reconocer si un obstáculo del LiDAR coincide con uno
     # conocido del mapa (para no frenar por obstáculos que ya están en el plan).
-    known_obstacle_tolerance: 0.30
+    known_obstacle_tolerance: 0.40
 
     # Ventana angular (grados) alrededor de un obstáculo conocido para
     # considerar lecturas del LiDAR como parte del mismo obstáculo.
