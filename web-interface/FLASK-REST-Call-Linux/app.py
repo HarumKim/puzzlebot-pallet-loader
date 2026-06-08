@@ -99,7 +99,7 @@ class ImageSubscriber(Node):
             self.particles_callback, 10)
 
         self.create_subscription(
-            Odometry, '/mcl_odom',
+            Odometry, '/ekf_odom',
             self.mcl_odom_callback, 10)
 
         self.create_subscription(

@@ -108,6 +108,7 @@ class VoiceRecognitionNode(Node):
             return
         self._active = False
         self._stop_grabacion.set()
+        sd.stop()
         self._publicar_status('PAUSADO')
         self.get_logger().info('Micrófono desactivado.')
 

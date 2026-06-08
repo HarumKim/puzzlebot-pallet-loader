@@ -9,15 +9,6 @@ btn.addEventListener('click', () => {
     fetch(isRunning ? '/voice/start' : '/voice/stop', { method: 'POST' });
 });
 
-function updateResult() {
-    fetch('/api/result')
-        .then(r => r.text())
-        .then(result => {
-            document.getElementById('result').textContent = result;
-        })
-        .catch(error => console.error('Error fetching data:', error));
-}
-
 function updateVoiceStatus() {
     fetch('/api/voice_status')
         .then(r => r.text())
@@ -27,5 +18,4 @@ function updateVoiceStatus() {
         .catch(error => console.error('Error fetching voice status:', error));
 }
 
-setInterval(updateResult, 500);
 setInterval(updateVoiceStatus, 500);
