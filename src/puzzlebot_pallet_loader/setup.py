@@ -16,6 +16,7 @@ setup(
         (os.path.join('share', package_name, 'launch'), glob('launch/*.py')),
         (os.path.join('share', package_name, 'config'), glob('config/*.yaml')),
         (os.path.join('share', package_name, 'config'), glob('config/*.npz')),
+        (os.path.join('share', package_name, 'rviz'), glob('rviz/*.rviz')),
         # Modelos HMM de reconocimiento de voz
         (os.path.join('lib', 'python3.10', 'site-packages', package_name, 'models'), glob(package_name + '/models/*.pkl')),
         (os.path.join('share', package_name, 'launch'), glob('launch/*.launch.py')),

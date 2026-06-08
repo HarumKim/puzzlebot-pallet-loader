@@ -80,6 +80,7 @@ class OdometryNode(Node):
         self.declare_parameter("base_frame", "base_link")
         self.declare_parameter("odom_frame", "odom")
         self.declare_parameter("laser_frame", "laser")
+        self.declare_parameter("laser_parent_frame", "")
 
         self.declare_parameter("activate_Kalman", False)
         self.declare_parameter("kalman_correction_topic", "/ground_truth")
@@ -105,6 +106,9 @@ class OdometryNode(Node):
         self.base_frame = self.get_parameter("base_frame").value
         self.odom_frame = self.get_parameter("odom_frame").value
         self.laser_frame = self.get_parameter("laser_frame").value
+        self.laser_parent_frame = (
+            self.get_parameter("laser_parent_frame").value or self.base_frame
+        )
 
         self.activate_Kalman = bool(self.get_parameter("activate_Kalman").value)
         self.kalman_correction_topic = self.get_parameter("kalman_correction_topic").value
@@ -320,22 +324,22 @@ class OdometryNode(Node):
 
         self.odom_pub.publish(odom)
 
-        # tf_odom = TransformStamped()
-        # tf_odom.header.stamp = now
-        # tf_odom.header.frame_id = self.odom_frame
-        # tf_odom.child_frame_id = self.base_frame
+        tf_odom = TransformStamped()
+        tf_odom.header.stamp = now
+        tf_odom.header.frame_id = self.odom_frame
+        tf_odom.child_frame_id = self.base_frame
 
-        # tf_odom.transform.translation.x = self.x
-        # tf_odom.transform.translation.y = self.y
-        # tf_odom.transform.translation.z = 0.0
-        # tf_odom.transform.rotation = q
+        tf_odom.transform.translation.x = self.x
+        tf_odom.transform.translation.y = self.y
+        tf_odom.transform.translation.z = 0.0
+        tf_odom.transform.rotation = q
 
-        # self.tf_br.sendTransform(tf_odom)
+        self.tf_br.sendTransform(tf_odom)
 
     def _publish_laser_tf(self):
         tf_static = TransformStamped()
         tf_static.header.stamp = self.get_clock().now().to_msg()
-        tf_static.header.frame_id = self.base_frame
+        tf_static.header.frame_id = self.laser_parent_frame
         tf_static.child_frame_id = self.laser_frame
 
         tf_static.transform.translation.x = 0.07
@@ -347,7 +351,7 @@ class OdometryNode(Node):
 
         self.static_br.sendTransform(tf_static)
         self.get_logger().info(
-            f"Static TF published: {self.base_frame} -> {self.laser_frame} (yaw=180 deg)"
+            f"Static TF published: {self.laser_parent_frame} -> {self.laser_frame} (yaw=180 deg)"
         )
 
 
