@@ -233,7 +233,16 @@ class DetectorNode(Node):
             return
 
         if self._require_qr_data and not self._target_class:
+            self._no_qr_frames = getattr(self, '_no_qr_frames', 0) + 1
+            if self._no_qr_frames % 30 == 1:
+                self.get_logger().warn(
+                    f'YOLO activo pero sin clase objetivo — '
+                    f'qr_value="{self._qr_value}", target_class=None. '
+                    f'Claves validas: {list(self._qr_to_class.keys())}. '
+                    f'Esperando /qr_data...'
+                )
             return
+        self._no_qr_frames = 0
 
         np_arr = np.frombuffer(msg.data, np.uint8)
         frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)

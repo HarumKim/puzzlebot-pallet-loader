@@ -15,11 +15,12 @@ import cv2
 
 app = Flask(__name__, static_folder='templates', static_url_path='')
 
-latest_frame      = None
-latest_detections = {}
+latest_frame        = None
+latest_yolo_frame   = None   # frame anotado de YOLO (/yolo/annotated/compressed)
+latest_detections   = {}
 latest_voice_status = '---'
-latest_fsm_state = 'UNKNOWN'
-ros_node = None
+latest_fsm_state    = 'UNKNOWN'
+ros_node            = None
 
 # MCL map state
 latest_map_meta = None   # dict: width, height, resolution, origin_x, origin_y
@@ -30,23 +31,34 @@ latest_mcl_jpeg  = None  # JPEG bytes del último render completo
 
 # Mapeo de estados internos de la FSM a etiquetas descriptivas para la UI
 FSM_STATE_LABELS = {
-    'NAV_TO_WP1': 'NAVIGATING TO WAYPOINT 1',
-    'WAIT_QR_DETECTION': 'WAITING FOR QR DETECTION',
-    'QR_ALIGN': 'QR ALIGNMENT',
-    'FORKLIFT_RESET_ENCODER': 'RESETTING FORKLIFT ENCODER',
+    'NAV_TO_WP1':               'NAVIGATING TO WAYPOINT 1',
+    'WAIT_QR_DETECTION':        'WAITING FOR QR DETECTION',
+    'QR_ALIGN':                 'QR ALIGNMENT',
+    'FORKLIFT_RESET_ENCODER':   'RESETTING FORKLIFT ENCODER',
     'FORKLIFT_CONVEYOR_HEIGHT': 'RAISING FORKLIFT',
-    'QR_LOAD': 'LOADING PALLET',
-    'FORKLIFT_LIFT_OUT': 'LIFTING PALLET',
-    'REVERSE_FROM_PALLET': 'REVERSING FROM RACK',
-    'FORKLIFT_LOWER': 'LOWERING FORKLIFT',
-    'NAV_TO_WP2': 'NAVIGATING TO WAYPOINT 2',
-    'ADVANCE_STRAIGHT': 'ADVANCING TO SHELF',
-    'FORKLIFT_LOWER_DROP': 'LOWERING FORKLIFT',
-    'REVERSE_DROP': 'REVERSING FROM SHELF',
-    'MISSION_DONE': 'MISSION DONE',
-    'STOPPED': 'MISSION STOPPED',
-    'UNKNOWN': 'INITIALIZING...',
-    'FORKLIFT_LIFT_RACK': 'RAISING FORKLIFT TO RACK',
+    'QR_LOAD':                  'LOADING PALLET',
+    'FORKLIFT_LIFT_OUT':        'LIFTING PALLET',
+    'REVERSE_FROM_PALLET':      'REVERSING FROM RACK',
+    'FORKLIFT_LOWER':           'LOWERING FORKLIFT',
+    'NAV_TO_WP2':               'NAVIGATING TO WAYPOINT 2',
+    'YOLO_SCAN':                'SCANNING FOR CLIENT (YOLO)',
+    'NAV_TO_DROP':              'NAVIGATING TO DROP WAYPOINT',
+    'FORKLIFT_LIFT_RACK':       'RAISING FORKLIFT TO RACK',
+    'ADVANCE_STRAIGHT':         'ADVANCING TO SHELF',
+    'FORKLIFT_LOWER_DROP':      'LOWERING FORKLIFT',
+    'REVERSE_DROP':             'REVERSING FROM SHELF',
+    'MISSION_DONE':             'MISSION DONE',
+    'STOPPED':                  'MISSION STOPPED',
+    'UNKNOWN':                  'INITIALIZING...',
+}
+
+# Estados de la FSM donde YOLO está activo (yolo_enable=True).
+# En estos estados se muestra /yolo/annotated/compressed en la interfaz.
+# En cualquier otro estado se muestra /detection/annotated/compressed
+# (frame QR anotado o cámara normal via camera_bridge).
+_YOLO_STATES = {
+    'YOLO_SCAN',    # WP2 reached — buscando cliente con YOLO
+    'NAV_TO_DROP',  # navegando al drop waypoint seleccionado por YOLO
 }
 
 _CAM_QOS = QoSProfile(
@@ -68,9 +80,15 @@ class ImageSubscriber(Node):
     def __init__(self):
         super().__init__('flask_web_subscriber')
 
+        # Frame principal: QR anotado + cámara normal via camera_bridge
         self.create_subscription(
             CompressedImage, '/detection/annotated/compressed',
             self.camera_callback, _CAM_QOS)
+
+        # Frame anotado de YOLO — solo se muestra cuando FSM está en _YOLO_STATES
+        self.create_subscription(
+            CompressedImage, '/yolo/annotated/compressed',
+            self.yolo_camera_callback, _CAM_QOS)
 
         self.create_subscription(
             OccupancyGrid, '/map',
@@ -102,20 +120,24 @@ class ImageSubscriber(Node):
         global latest_frame
         latest_frame = bytes(data.data)
 
+    def yolo_camera_callback(self, data):
+        global latest_yolo_frame
+        latest_yolo_frame = bytes(data.data)
+
     def map_callback(self, data):
         global latest_map_meta, latest_map_base
-        w = data.info.width
-        h = data.info.height
+        w   = data.info.width
+        h   = data.info.height
         res = data.info.resolution
-        ox = data.info.origin.position.x
-        oy = data.info.origin.position.y
+        ox  = data.info.origin.position.x
+        oy  = data.info.origin.position.y
 
         grid = np.array(data.data, dtype=np.int8).reshape(h, w)
 
         # unknown=-1 → gray, free=0 → white, occupied>0 → black
         img = np.full((h, w, 3), 128, dtype=np.uint8)
-        img[grid == 0]  = [255, 255, 255]
-        img[grid > 0]   = [0,   0,   0  ]
+        img[grid == 0] = [255, 255, 255]
+        img[grid >  0] = [0,   0,   0  ]
 
         # ROS origin is bottom-left; flip so top of image = top of map
         img = cv2.flip(img, 0)
@@ -169,7 +191,7 @@ def ros2_thread():
     rclpy.shutdown()
 
 
-# ── Rendering MCL ─────────────────────────────────────────────────────────────
+# ── Rendering MCL ──────────────────────────────────────────────────────────────
 
 def _make_placeholder():
     img = np.zeros((300, 640, 3), dtype=np.uint8)
@@ -178,11 +200,11 @@ def _make_placeholder():
     _, buf = cv2.imencode('.jpg', img)
     return buf.tobytes()
 
-_MCL_PLACEHOLDER = None   # se inicializa en el primer uso para no importar cv2 antes de tiempo
+_MCL_PLACEHOLDER = None   # se inicializa en el primer uso
 
 
 def _render_and_cache():
-    """Renderiza mapa + partículas + pose y guarda el JPEG resultante en latest_mcl_jpeg."""
+    """Renderiza mapa + partículas + pose y guarda el JPEG en latest_mcl_jpeg."""
     global latest_mcl_jpeg
     meta = latest_map_meta
     base = latest_map_base
@@ -230,11 +252,21 @@ def _render_and_cache():
         latest_mcl_jpeg = buf.tobytes()
 
 
-# ── Generadores de streaming ──────────────────────────────────────────────────
+# ── Generadores de streaming ───────────────────────────────────────────────────
 
 def gen_frames():
     while True:
-        frame = latest_frame
+        # Muestra el frame anotado de YOLO solo cuando la FSM está en un
+        # estado con YOLO activo y ya llegó al menos un frame de ese topic.
+        # En cualquier otro caso muestra el topic principal
+        # (/detection/annotated/compressed), que puede ser el frame QR
+        # anotado (cuando qr_alignP está enabled) o la cámara limpia
+        # (cuando camera_bridge es el único publisher).
+        if latest_fsm_state in _YOLO_STATES and latest_yolo_frame is not None:
+            frame = latest_yolo_frame
+        else:
+            frame = latest_frame
+
         if frame is not None:
             yield (b'--frame\r\n'
                    b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
@@ -252,7 +284,7 @@ def gen_map_frames():
         time.sleep(0.1)     # 10 fps es suficiente para el mapa
 
 
-# ── Rutas Flask ───────────────────────────────────────────────────────────────
+# ── Rutas Flask ────────────────────────────────────────────────────────────────
 
 @app.route('/')
 def show_result():
@@ -304,7 +336,7 @@ def voice_stop():
     return '', 204
 
 
-# ── Main ──────────────────────────────────────────────────────────────────────
+# ── Main ───────────────────────────────────────────────────────────────────────
 
 if __name__ == '__main__':
     t_ros = threading.Thread(target=ros2_thread, daemon=True)

@@ -47,7 +47,7 @@ BLIND_SECS    = 1.0    # segundos que avanza a ciegas antes de rendirse
 
 # Carga de pallet
 LOAD_SPEED    = 0.02   # m/s
-LOAD_DIST     = 0.17   # metros (10 cm)
+LOAD_DIST     = 0.20   # metros (10 cm)
 
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -77,27 +77,25 @@ class QRApproach(Node):
         self.declare_parameter('load_enable_topic', '/qr_align/load_enable')
         self.declare_parameter('udp_port', 5004)
 
-        cmd_vel_topic = self.get_parameter('cmd_vel_topic').value
-        enable_topic = self.get_parameter('enable_topic').value
-        status_topic = self.get_parameter('status_topic').value
+        cmd_vel_topic     = self.get_parameter('cmd_vel_topic').value
+        enable_topic      = self.get_parameter('enable_topic').value
+        status_topic      = self.get_parameter('status_topic').value
         load_enable_topic = self.get_parameter('load_enable_topic').value
-        udp_port = self.get_parameter('udp_port').value
+        udp_port          = self.get_parameter('udp_port').value
 
-        self._load_enabled = False
-        self._ready_to_load_sent = False
+        self._load_enabled        = False
+        self._ready_to_load_sent  = False
 
-        self._pub = self.create_publisher(Twist, cmd_vel_topic, 10)
+        self._pub        = self.create_publisher(Twist, cmd_vel_topic, 10)
         self._status_pub = self.create_publisher(String, status_topic, 10)
         self.create_subscription(Bool, enable_topic, self._enable_cb, 10)
         self.create_subscription(Bool, load_enable_topic, self._load_enable_cb, 10)
-        self._enabled = False
-        self._pub_img = self.create_publisher(
+        self._enabled  = False
+        self._pub_img  = self.create_publisher(
             CompressedImage, '/detection/annotated/compressed', 10)
         self._pub_done = self.create_publisher(Bool, '/qr_align/done', 10)
-        # ── CAMBIO 1: publisher /qr_data ──────────────────────────────────────
         self._pub_qr   = self.create_publisher(String, '/qr_data', 10)
         self._qr_value = None
-        # ─────────────────────────────────────────────────────────────────────
 
         pipeline_str = (
             f'udpsrc port={udp_port} caps="video/mpegts, systemstream=true" ! '
@@ -142,8 +140,8 @@ class QRApproach(Node):
             self.get_logger().info('LOAD enabled by FSM.')
             if self._state == ST_APPROACH and self._ready_to_load_sent:
                 self._cmd(0.0, 0.0)
-                self._state = ST_LOAD
-                self._load_start = self._now()
+                self._state          = ST_LOAD
+                self._load_start     = self._now()
                 self._load_last_time = None
                 self._load_dist_done = 0.0
                 self.get_logger().info('FSM autorizo LOAD - iniciando avance hardcodeado.')
@@ -153,14 +151,14 @@ class QRApproach(Node):
 
         if not self._enabled:
             self._cmd(0.0, 0.0)
-            self._load_enabled = False
+            self._load_enabled       = False
             self._ready_to_load_sent = False
-            self._state = ST_APPROACH
-            self._load_last_time = None
-            self._load_dist_done = 0.0
+            self._state              = ST_APPROACH
+            self._load_last_time     = None
+            self._load_dist_done     = 0.0
 
     def _publish_status(self, status: str):
-        msg = String()
+        msg      = String()
         msg.data = status
         self._status_pub.publish(msg)
 
@@ -209,6 +207,8 @@ class QRApproach(Node):
                 return
             frame = self._latest_frame.copy()
 
+        # Cuando no está enabled publica el frame limpio de cámara y para.
+        # NO mezcla frames de YOLO — eso causaba el glitch en la interfaz.
         if not self._enabled:
             self._cmd(0.0, 0.0)
             self._publish_frame(frame)
@@ -252,10 +252,10 @@ class QRApproach(Node):
 
             if self._load_dist_done >= LOAD_DIST:
                 self._cmd(0.0, 0.0)
-                self._state = ST_DONE
+                self._state        = ST_DONE
                 self._load_enabled = False
                 self.get_logger().info('LOAD terminado - enviando LOAD_DONE a FSM.')
-                done_msg = Bool()
+                done_msg      = Bool()
                 done_msg.data = True
                 self._pub_done.publish(done_msg)
                 self._publish_status('LOAD_DONE')
@@ -359,7 +359,7 @@ class QRApproach(Node):
                 self._cmd(0.0, 0.0)
                 if not self._ready_to_load_sent:
                     self._ready_to_load_sent = True
-                    self._load_enabled = False
+                    self._load_enabled       = False
                     self._publish_status('READY_TO_LOAD')
                     self.get_logger().info(
                         f'Stop alcanzado (diag={diag_use:.1f}px) - READY_TO_LOAD enviado. '
@@ -409,14 +409,12 @@ class QRApproach(Node):
                     cv2.putText(frame, data,
                                 (pts_np[0][0], pts_np[0][1] - 10),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.48, color, 1)
-                    # ── CAMBIO 2: publica /qr_data solo cuando cambia ─────────
                     if data != self._qr_value:
                         self._qr_value = data
-                        qr_msg = String()
+                        qr_msg      = String()
                         qr_msg.data = data
                         self._pub_qr.publish(qr_msg)
                         self.get_logger().info(f'QR publicado: {data}')
-                    # ─────────────────────────────────────────────────────────
 
         else:
             if self._lost_frames >= MAX_LOST:
@@ -439,10 +437,10 @@ class QRApproach(Node):
         ok, buf = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
         if not ok:
             return
-        msg = CompressedImage()
-        msg.header.stamp  = self.get_clock().now().to_msg()
-        msg.format        = 'jpeg'
-        msg.data          = buf.tobytes()
+        msg              = CompressedImage()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.format       = 'jpeg'
+        msg.data         = buf.tobytes()
         self._pub_img.publish(msg)
 
     def destroy_node(self):
