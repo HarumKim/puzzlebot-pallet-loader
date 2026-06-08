@@ -172,9 +172,18 @@ class ImageSubscriber(Node):
         global latest_voice_status
         latest_voice_status = data.data
 
+    #def fsm_state_callback(self, data):
+    #    global latest_fsm_state
+    #    latest_fsm_state = data.data
+
     def fsm_state_callback(self, data):
-        global latest_fsm_state
+        global latest_fsm_state, latest_yolo_frame
+        prev_state = latest_fsm_state
         latest_fsm_state = data.data
+
+        # Si salimos de un estado YOLO, limpiar el frame para no congelarlo
+        if prev_state in _YOLO_STATES and latest_fsm_state not in _YOLO_STATES:
+            latest_yolo_frame = None
 
     def send_voice_command(self, command):
         msg = String()
