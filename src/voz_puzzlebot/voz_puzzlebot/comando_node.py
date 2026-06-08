@@ -74,17 +74,21 @@ class VoiceCommandNode(Node):
         # ── Publicadores ─────────────────────────────────────────
         self.pub_command = self.create_publisher(String, '/puzzlebot/command', 10)
         self.pub_status  = self.create_publisher(String, '/voice/status',      10)
- 
+
+        # ── Suscripcion a activacion web ─────────────────────────
+        self.create_subscription(String, '/voice/command', self._web_command_callback, 10)
+
         # ── Estado interno ───────────────────────────────────────
+        self._active          = False
         self._buffer_chunks   = []
         self._pre_buffer      = []
         self._chunks_silencio = 0
         self._chunks_voz      = 0
         self._lock            = threading.Lock()
         self._stop_grabacion  = threading.Event()
- 
-        self.get_logger().info("Nodo listo. Iniciando grabacion continua.")
-        self._iniciar_grabacion()
+
+        self.get_logger().info("Nodo listo. Esperando activacion desde la web.")
+        self._publicar_status("ESPERANDO")
  
     def _buscar_modelo(self):
         """Busca modelo_voz.pkl junto al nodo o en ./outputs/."""
@@ -97,22 +101,39 @@ class VoiceCommandNode(Node):
                 return c
         return candidatos[0]   # devuelve el primero para que el error sea claro
  
+    # ── Comando desde la pagina web ──────────────────────────────
+    def _web_command_callback(self, msg: String):
+        cmd = msg.data.strip().lower()
+        if cmd == 'start':
+            self._iniciar_grabacion()
+        elif cmd == 'stop':
+            self._detener_grabacion()
+
     # ── Control de grabacion ─────────────────────────────────────
     def _iniciar_grabacion(self):
+        if self._active:
+            return
+        self._active = True
         self._stop_grabacion.clear()
         self._buffer_chunks   = []
         self._pre_buffer      = []
         self._chunks_silencio = 0
         self._chunks_voz      = 0
+        if hasattr(self, '_hilo_grabacion') and self._hilo_grabacion is not None:
+            self._hilo_grabacion.join(timeout=1.0)
         self._hilo_grabacion = threading.Thread(
             target=self._loop_grabacion, daemon=True
         )
         self._hilo_grabacion.start()
         self._publicar_status("ESCUCHANDO")
         self.get_logger().info("Grabacion iniciada.")
- 
+
     def _detener_grabacion(self):
+        if not self._active:
+            return
+        self._active = False
         self._stop_grabacion.set()
+        sd.stop()
         self._publicar_status("PAUSADO")
         self.get_logger().info("Grabacion detenida.")
  
@@ -124,7 +145,10 @@ class VoiceCommandNode(Node):
         while not self._stop_grabacion.is_set():
             chunk = sd.rec(samples_por_chunk, samplerate=self.FS,
                            channels=1, dtype='float32')
-            sd.wait()
+            try:
+                sd.wait()
+            except Exception:
+                break
             chunk = chunk.flatten()
  
             rms     = float(np.sqrt(np.mean(chunk ** 2)))
