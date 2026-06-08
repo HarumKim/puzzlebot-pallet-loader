@@ -28,6 +28,9 @@ class FSMControlNode(Node):
     # ── CAMBIO 1: nuevos estados ──────────────────────────────────────
     STATE_YOLO_SCAN = 'YOLO_SCAN'
     STATE_NAV_TO_DROP = 'NAV_TO_DROP'
+    STATE_ADVANCE_STRAIGHT = 'ADVANCE_STRAIGHT'
+    STATE_FORKLIFT_LOWER_DROP = 'FORKLIFT_LOWER_DROP'
+    STATE_REVERSE_DROP = 'REVERSE_DROP'
     # ─────────────────────────────────────────────────────────────────
     STATE_MISSION_DONE = 'MISSION_DONE'
     STATE_STOPPED = 'STOPPED'
@@ -91,6 +94,9 @@ class FSMControlNode(Node):
         self.declare_parameter('forklift_lower_wait_sec', 2.0)
         self.declare_parameter('reverse_distance_m', 0.20)
         self.declare_parameter('reverse_speed_m_s', 0.03)
+        self.declare_parameter('advance_distance_m', 0.30)
+        self.declare_parameter('advance_speed_m_s', 0.10)
+        self.declare_parameter('drop_reverse_distance_m', 0.30)
 
         self.declare_parameter('forklift_hold_status', 3)
         self.declare_parameter('forklift_error_status', 224)
@@ -124,6 +130,9 @@ class FSMControlNode(Node):
         self.forklift_lower_wait_sec = float(self.get_parameter('forklift_lower_wait_sec').value)
         self.reverse_distance_m = float(self.get_parameter('reverse_distance_m').value)
         self.reverse_speed_m_s = float(self.get_parameter('reverse_speed_m_s').value)
+        self.advance_distance_m = float(self.get_parameter('advance_distance_m').value)
+        self.advance_speed_m_s = float(self.get_parameter('advance_speed_m_s').value)
+        self.drop_reverse_distance_m = float(self.get_parameter('drop_reverse_distance_m').value)
 
         self.fsm_state_topic = self.get_parameter('fsm_state_topic').value
         self.mission_event_topic = self.get_parameter('mission_event_topic').value
@@ -298,8 +307,7 @@ class FSMControlNode(Node):
         elif self.state == self.STATE_NAV_TO_DROP:
             self.get_logger().info(f'Drop waypoint reached: {status}')
             self._publish_stop()
-            self._publish_forklift_command_once(self.forklift_stop_command)
-            self._transition(self.STATE_MISSION_DONE, 'DROP_REACHED_MISSION_DONE')
+            self._transition(self.STATE_FORKLIFT_LIFT_RACK, 'DROP_REACHED_LIFTING_RACK')
         # ─────────────────────────────────────────────────────────────────
 
         else:
@@ -570,6 +578,58 @@ class FSMControlNode(Node):
                 self.get_logger().warn('YOLO scan timeout — no se confirmo cliente')
                 self._set_yolo_enable(False)
                 self._transition(self.STATE_MISSION_DONE, 'YOLO_TIMEOUT')
+
+        elif self.state == self.STATE_FORKLIFT_LIFT_RACK:
+            self.pub_cmd_vel.publish(Twist())
+            self._set_qr_enable(False)
+            self._set_qr_load_enable(False)
+            self._set_yolo_enable(False)
+            elapsed = now - self.state_enter_time
+            if elapsed <= self.forklift_rack_command_duration_sec:
+                self._publish_forklift_command_once(self.forklift_lift_command)
+            if elapsed >= self.forklift_lift_wait_sec:
+                self._publish_forklift_command_once(self.forklift_stop_command)
+                self._transition(self.STATE_ADVANCE_STRAIGHT, 'RACK_LIFTED_ADVANCING_STRAIGHT')
+
+        elif self.state == self.STATE_ADVANCE_STRAIGHT:
+            self._set_qr_enable(False)
+            self._set_qr_load_enable(False)
+            self._set_yolo_enable(False)
+            advance_duration = self.advance_distance_m / self.advance_speed_m_s
+            elapsed = now - self.state_enter_time
+            if elapsed < advance_duration:
+                fwd = Twist()
+                fwd.linear.x = self.advance_speed_m_s
+                self.pub_cmd_vel.publish(fwd)
+            else:
+                self._publish_stop()
+                self._transition(self.STATE_FORKLIFT_LOWER_DROP, 'ADVANCE_DONE_LOWERING_FORKLIFT')
+
+        elif self.state == self.STATE_FORKLIFT_LOWER_DROP:
+            self.pub_cmd_vel.publish(Twist())
+            self._set_qr_enable(False)
+            self._set_qr_load_enable(False)
+            self._set_yolo_enable(False)
+            elapsed = now - self.state_enter_time
+            if elapsed <= self.forklift_rack_command_duration_sec:
+                self._publish_forklift_command_once(self.forklift_lower_command)
+            if elapsed >= self.forklift_lower_wait_sec:
+                self._publish_forklift_command_once(self.forklift_stop_command)
+                self._transition(self.STATE_REVERSE_DROP, 'FORKLIFT_LOWERED_REVERSING_DROP')
+
+        elif self.state == self.STATE_REVERSE_DROP:
+            self._set_qr_enable(False)
+            self._set_qr_load_enable(False)
+            self._set_yolo_enable(False)
+            reverse_duration = self.drop_reverse_distance_m / self.reverse_speed_m_s
+            elapsed = now - self.state_enter_time
+            if elapsed < reverse_duration:
+                reverse_cmd = Twist()
+                reverse_cmd.linear.x = -self.reverse_speed_m_s
+                self.pub_cmd_vel.publish(reverse_cmd)
+            else:
+                self._publish_stop()
+                self._transition(self.STATE_MISSION_DONE, 'REVERSE_DROP_DONE_MISSION_DONE')
 
         # ── CAMBIO 9: NAV_TO_DROP — navega al drop waypoint ─────────────
         elif self.state == self.STATE_NAV_TO_DROP:

@@ -121,9 +121,9 @@ def generate_launch_description():
                 # Drop waypoints: [x1,y1,yaw1, x2,y2,yaw2, x3,y3,yaw3]
                 # Ajusta las coordenadas a tu arena
                 'drop_waypoints': [
-                    2.40, 1.29, 0.0,   # WP_DROP_1 (izquierda)
-                    2.40, 0.78, 0.0,   # WP_DROP_2 (centro)
-                    2.40, 0.27, 0.0,   # WP_DROP_3 (derecha)
+                    1.80, 1.29, 0.0,   # WP_DROP_1 (izquierda)
+                    1.80, 0.78, 0.0,   # WP_DROP_2 (centro)
+                    1.80, 0.32, 0.0,   # WP_DROP_3 (derecha)
                 ],
                 'yolo_scan_timeout_sec': 15.0,
             }

@@ -20,12 +20,12 @@
 
         <div class="box">
           <p class="box-label">Estado</p>
-          <h1> ALINEANDO </h1>
+          <h1><span id="fsm-state">Cargando...</span></h1>
         </div>
 
         <div class="box">
           <p class="box-label">Coordenadas</p>
-          <h1 class="coords">X: 0.00 &nbsp;|&nbsp; Y: 0.00</h1>
+          <h1 class="coords" id="coords-display">X: ---&nbsp;|&nbsp;Y: ---</h1>
         </div>
       </header>
 
@@ -73,6 +73,43 @@
       </footer>
 
     </div>
+
+    <script>
+      function updateFsmState() {
+          fetch('/api/fsm_state')
+              .then(r => r.text())
+              .then(state => {
+                  document.getElementById('fsm-state').textContent = state;
+              })
+              .catch(() => {
+                  document.getElementById('fsm-state').textContent = 'Error';
+              });
+      }
+
+      function updateCoords() {
+          fetch('/api/pose')
+              .then(r => r.json())
+              .then(data => {
+                  const el = document.getElementById('coords-display');
+                  if (data.x !== null) {
+                      const x = data.x.toFixed(2);
+                      const y = data.y.toFixed(2);
+                      el.textContent = `X: ${x} | Y: ${y}`;
+                  } else {
+                      el.textContent = 'X: --- | Y: ---';
+                  }
+              })
+              .catch(() => {});
+      }
+
+      setInterval(updateFsmState, 1000);
+      setInterval(updateCoords, 500);
+
+      document.addEventListener('DOMContentLoaded', () => {
+          updateFsmState();
+          updateCoords();
+      });
+    </script>
   </body>
 
 </html>

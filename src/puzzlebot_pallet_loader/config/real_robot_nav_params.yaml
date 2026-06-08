@@ -46,7 +46,7 @@ hybrid_a_star_bug0_node:
     bounds:
     - -2.65  # x mínimo (dentro de pared izquierda x≈-2.81)
     - -1.65  # y mínimo (dentro de pared sur y≈-1.84)
-    - 2.50   # x máximo (dentro de pared derecha x≈2.06)
+    - 2.70   # x máximo (dentro de pared derecha x≈2.06)
     - 1.65   # y máximo (dentro de pared norte y≈1.84)
 
     # Tamaño de cada celda del grid A* en metros.
@@ -89,11 +89,40 @@ hybrid_a_star_bug0_node:
     - -1.70
     - -2.65
     - 1.70
-    # Pared este/derecha (ArUcos #9 y #10 en x=2.06)
+
+    # Pared este/derecha segmentada con 3 salidas para clientes
+    # Formato: xmin, ymin, xmax, ymax
+
+    # Segmento 1: de y=-1.88 a y=0.15
     - 1.90
-    - -1.70
+    - -1.88
     - 2.10
-    - 1.70
+    - 0.15
+
+    # Salida cliente inferior: y=0.15 a y=0.51
+
+    # Segmento 2: de y=0.51 a y=0.66
+    - 1.90
+    - 0.51
+    - 2.10
+    - 0.66
+
+    # Salida cliente medio: y=0.66 a y=1.03
+
+    # Segmento 3: de y=1.03 a y=1.175
+    - 1.90
+    - 1.03
+    - 2.10
+    - 1.175
+
+    # Salida cliente superior: y=1.175 a y=1.53
+
+    # Segmento 4: de y=1.53 a y=1.88
+    - 1.90
+    - 1.53
+    - 2.10
+    - 1.88
+
     # Obstáculo 0: pared/obstáculo vertical izquierda
     - -2.637
     - -0.883
