@@ -16,7 +16,7 @@ from std_msgs.msg import String, Float32MultiArray
 
 DEFAULT_WAYPOINTS = [3.5, 2.7]
 
-MAX_LIN = 0.04
+MAX_LIN = 0.08
 
 LOCALIZATION_COV_THRESHOLD = 0.50
 MAX_ANG = 0.05

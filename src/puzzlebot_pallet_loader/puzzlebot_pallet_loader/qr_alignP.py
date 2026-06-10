@@ -47,7 +47,7 @@ BLIND_SECS    = 1.0    # segundos que avanza a ciegas antes de rendirse
 
 # Carga de pallet
 LOAD_SPEED    = 0.02   # m/s
-LOAD_DIST     = 0.20   # metros (10 cm)
+LOAD_DIST     = 0.17   # metros (10 cm)
 
 # ══════════════════════════════════════════════════════════════════════════════
 

@@ -27,7 +27,7 @@ from ultralytics import YOLO
 # Ajusta estos nombres si tu best.pt usa nombres distintos.
 DEFAULT_QR_TO_CLASS = {
     'Emezon': 'Client1',
-    'Walmar': 'Client2',
+    'Wolmar': 'Client2',
     'Popsi':  'Client3',
 }
 
