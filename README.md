@@ -4,7 +4,7 @@
 
 **Sistema autónomo de carga de pallets con visión artificial, reconocimiento de voz y control de elevador físico**
 
-Proyecto final — Integración de Robótica y Sistemas Inteligentes · Manchester Robotics
+Proyecto final — Integración de Robótica y Sistemas Inteligentes · Manchester Robotics · E80
 
 ![ROS2](https://img.shields.io/badge/ROS_2-Humble-blue?logo=ros)
 ![Python](https://img.shields.io/badge/Python-3.10+-yellow?logo=python)
@@ -254,6 +254,11 @@ SLAM con localización Monte Carlo (MCL), construcción de mapa de ocupación (`
 | FPGA | Control del mecanismo elevador del pallet |
 | PC con GPU | Inferencia YOLOv8, localización, planificación |
 | Puente H | Control de motores de tracción |
+
+<div align="center">
+  <img src="https://github.com/user-attachments/assets/feff99ef-5526-4f72-ba92-62febb318f62" width="800" />
+</div>
+
 
 ---
 
