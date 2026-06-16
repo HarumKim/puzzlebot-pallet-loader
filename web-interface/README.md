@@ -7,9 +7,8 @@ Dashboard de monitoreo en tiempo real para el sistema de carga de pallets. Acces
 ## Vista previa
 
 <div align="center">
-<img src="https://github.com/user-attachments/assets/d107bdf3-ead8-4c92-9b92-aa30a0573d9c" width="600"/>
+<img src="https://github.com/user-attachments/assets/4863288a-7a01-4533-ade9-7d60b184fb2a" width="900"/>
 </div>
-
 
 ---
 
