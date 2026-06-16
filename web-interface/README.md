@@ -6,11 +6,10 @@ Dashboard de monitoreo en tiempo real para el sistema de carga de pallets. Acces
 
 ## Vista previa
 
-<!-- Agrega aquí una imagen de la interfaz, por ejemplo:
 <div align="center">
-  <img src="enlace-a-tu-imagen" width="700" />
+<img src="https://github.com/user-attachments/assets/d107bdf3-ead8-4c92-9b92-aa30a0573d9c" width="600"/>
 </div>
--->
+
 
 ---
 
