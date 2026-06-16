@@ -81,6 +81,9 @@ El sistema se distribuye entre una **Jetson Nano** y una **PC con GPU**, comunic
 | `lifter_spi_node` | Jetson | Control SPI del elevador (FPGA) |
 | `web-interface/app.py` | PC / laptop | Dashboard Flask en `http://<ip>:8002` |
 
+
+<img width="979" height="651" alt="image" src="https://github.com/user-attachments/assets/80ee10e2-b39d-4fce-a19d-9ca8bf43470c" />
+
 ### Nodos principales
 
 <details>
