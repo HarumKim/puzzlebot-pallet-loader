@@ -82,7 +82,9 @@ El sistema se distribuye entre una **Jetson Nano** y una **PC con GPU**, comunic
 | `web-interface/app.py` | PC / laptop | Dashboard Flask en `http://<ip>:8002` |
 
 
-<img width="979" height="651" alt="image" src="https://github.com/user-attachments/assets/80ee10e2-b39d-4fce-a19d-9ca8bf43470c" />
+<div align="center">
+  <img src="https://github.com/user-attachments/assets/80ee10e2-b39d-4fce-a19d-9ca8bf43470c" width="500" />
+</div>
 
 ### Nodos principales
 
@@ -205,17 +207,6 @@ Implementación de los algoritmos **Bug0** y **Bug2** para navegación hacia un 
 Localización con Filtro de Kalman Extendido fusionando odometría y marcadores ArUco. Incluye visualización de elipse de covarianza y navegación **Tangent Bug**.
 </details>
 
-<details>
-<summary><b>bugs_a_star</b> — Comparativa de navegación</summary>
-
-Implementación y comparación de Bug0, Bug2, A* clásico y Hybrid A*-Bug0. Útil como banco de pruebas para distintas estrategias de navegación.
-</details>
-
-<details>
-<summary><b>slam</b> — Mapeo y localización</summary>
-
-SLAM con localización Monte Carlo (MCL), construcción de mapa de ocupación (`occupancy_grid_mapper.py`) y visualización en tiempo real vía RViz2.
-</details>
 
 ---
 
@@ -241,7 +232,7 @@ SLAM con localización Monte Carlo (MCL), construcción de mapa de ocupación (`
 - `flask`, `flask-socketio`
 
 **Jetson Nano**
-- Ubuntu 22.04 (imagen comunidad)
+- Ubuntu 22.04
 - ROS 2 Humble
 - CUDA 10.2
 
@@ -259,7 +250,7 @@ SLAM con localización Monte Carlo (MCL), construcción de mapa de ocupación (`
 | Puente H | Control de motores de tracción |
 
 <div align="center">
-  <img src="https://github.com/user-attachments/assets/feff99ef-5526-4f72-ba92-62febb318f62" width="800" />
+  <img src="https://github.com/user-attachments/assets/feff99ef-5526-4f72-ba92-62febb318f62" width="500" />
 </div>
 
 
@@ -267,15 +258,6 @@ SLAM con localización Monte Carlo (MCL), construcción de mapa de ocupación (`
 
 ## Equipo
 
-<div align="center">
+Valeria Meneses · Harum Kim · Mateo Sánchez · Alondra Caspeta
 
-| Integrante |
-|:---:|
-| Valeria Meneses |
-| Harum Kim |
-| Mateo Sánchez |
-| Alondra Caspeta |
-
-*Semestre enero – junio 2026*
-
-</div>
+*Integración de Robótica y Sistemas Inteligentes — E80 · enero–junio 2026*
